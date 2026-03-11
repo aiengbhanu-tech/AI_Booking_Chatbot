@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # RAG
     TOP_K: int = 6
     MAX_CONTEXT_CHARS: int = 12000
-
+    
+    # Stripe
+    STRIPE_SECRET_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    STRIPE_PRICE_STARTER: str | None = None
+    STRIPE_PRICE_GROWTH: str | None = None
+    STRIPE_PRICE_PRO: str | None = None
+    APP_BASE_URL: str = "http://localhost:3000"
 
 settings = Settings()

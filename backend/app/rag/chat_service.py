@@ -10,10 +10,24 @@ from app.rag.retriever import retrieve_context
 from app.rag.tools import TOOLS
 from app.leads.models import Lead
 from app.tenants.models import Tenant
+from app.analytics.models import ChatMessage
+
+
+def save_chat_message(db: Session, tenant_id: int, session_id: str | None, role: str, content: str):
+    if not session_id or not content:
+        return
+    db.add(
+        ChatMessage(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            role=role,
+            content=content,
+        )
+    )
+    db.commit()
 
 
 def _truncate_context(snippets: list[dict]) -> str:
-    # Join snippets, clip to MAX_CONTEXT_CHARS
     parts: list[str] = []
     for s in snippets:
         url = s.get("url") or ""
@@ -32,14 +46,24 @@ def run_chat(
     session_id: str | None = None,
 ) -> dict:
     try:
-        if not settings.OPENAI_API_KEY:
+        if not settings.OPENAI_API_KEY and settings.CHAT_PROVIDER == "openai":
             raise RuntimeError("OPENAI_API_KEY is missing")
 
-        q_vec = embed_texts([user_message])[0]
+        save_chat_message(db, tenant.id, session_id, "user", user_message)
 
+        q_vec = embed_texts([user_message])[0]
         qdrant = QdrantClient(url=settings.QDRANT_URL)
         snippets = retrieve_context(qdrant=qdrant, tenant_id=tenant.id, query_vector=q_vec)
         context = _truncate_context(snippets)
+
+        if settings.CHAT_PROVIDER == "mock":
+            assistant_text = f"Demo response for: {user_message}"
+            save_chat_message(db, tenant.id, session_id, "assistant", assistant_text)
+            return {
+                "answer": assistant_text,
+                "actions": [],
+                "sources": [{"url": s.get("url"), "score": s.get("score")} for s in snippets],
+            }
 
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
         messages = [
@@ -102,6 +126,7 @@ def run_chat(
                         actions.append({"type": "missing_calendly", "message": "Calendly not configured for tenant."})
 
         assistant_text = msg.content or "How can I help you?"
+        save_chat_message(db, tenant.id, session_id, "assistant", assistant_text)
 
         return {
             "answer": assistant_text,
@@ -112,3 +137,63 @@ def run_chat(
     except Exception as e:
         print(f"[CHAT ERROR] tenant_id={tenant.id} error={repr(e)}")
         raise
+
+
+def stream_chat(db, tenant, user_message: str, session_id: str | None = None):
+    if not settings.OPENAI_API_KEY and settings.CHAT_PROVIDER == "openai":
+        yield {"type": "error", "message": "OPENAI_API_KEY missing"}
+        return
+
+    try:
+        save_chat_message(db, tenant.id, session_id, "user", user_message)
+
+        q_vec = embed_texts([user_message])[0]
+        qdrant = QdrantClient(url=settings.QDRANT_URL)
+        snippets = retrieve_context(qdrant=qdrant, tenant_id=tenant.id, query_vector=q_vec)
+        context = _truncate_context(snippets)
+
+        if settings.CHAT_PROVIDER == "mock":
+            answer = f"Demo response for: {user_message}"
+            save_chat_message(db, tenant.id, session_id, "assistant", answer)
+            for token in answer.split():
+                yield {"type": "token", "content": token + " "}
+            yield {
+                "type": "done",
+                "answer": answer,
+                "sources": [{"url": s.get("url"), "score": s.get("score")} for s in snippets],
+                "actions": [],
+            }
+            return
+
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+        stream = client.chat.completions.create(
+            model=settings.OPENAI_CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_prompt(user_message=user_message, context=context)},
+            ],
+            temperature=0.2,
+            stream=True,
+        )
+
+        full_text = ""
+
+        for part in stream:
+            delta = part.choices[0].delta.content if part.choices and part.choices[0].delta else None
+            if delta:
+                full_text += delta
+                yield {"type": "token", "content": delta}
+
+        save_chat_message(db, tenant.id, session_id, "assistant", full_text)
+
+        yield {
+            "type": "done",
+            "answer": full_text,
+            "sources": [{"url": s.get("url"), "score": s.get("score")} for s in snippets],
+            "actions": [],
+        }
+
+    except Exception as e:
+        print(f"[STREAM CHAT ERROR] tenant_id={tenant.id} error={repr(e)}")
+        yield {"type": "error", "message": "Assistant temporarily unavailable"}

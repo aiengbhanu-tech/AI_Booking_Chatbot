@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.security import generate_api_key, _hash_api_key, get_current_tenant, generate_widget_public_key
+from app.core.security import (
+    generate_api_key,
+    _hash_api_key,
+    get_current_tenant,
+    generate_widget_public_key,
+)
 from app.tenants.models import Tenant
+from app.ingest.service import run_ingestion_for_tenant
 
 router = APIRouter()
 
@@ -25,9 +31,14 @@ class TenantCreateOut(BaseModel):
 
 
 @router.post("", response_model=TenantCreateOut)
-def create_tenant(payload: TenantCreateIn, db: Session = Depends(get_db)):
+def create_tenant(
+    payload: TenantCreateIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     api_key = generate_api_key()
     widget_key = generate_widget_public_key()
+
     t = Tenant(
         name=payload.name,
         website_url=str(payload.website_url) if payload.website_url else None,
@@ -38,15 +49,20 @@ def create_tenant(payload: TenantCreateIn, db: Session = Depends(get_db)):
         widget_public_key=widget_key,
         is_active=True,
     )
+
     db.add(t)
     db.commit()
     db.refresh(t)
+
+    if t.website_url:
+        background_tasks.add_task(run_ingestion_for_tenant, t.id, t.website_url)
+
     return TenantCreateOut(
-    id=t.id,
-    name=t.name,
-    api_key=api_key,
-    widget_key=widget_key,
-    website_url=t.website_url
+        id=t.id,
+        name=t.name,
+        api_key=api_key,
+        widget_key=widget_key,
+        website_url=t.website_url,
     )
 
 
@@ -57,6 +73,7 @@ class TenantMeOut(BaseModel):
     api_key_last4: str
     calendly_url: str | None
     contact_email: str | None
+    widget_public_key: str
 
 
 @router.get("/me", response_model=TenantMeOut)
@@ -68,4 +85,5 @@ def me(tenant: Tenant = Depends(get_current_tenant)):
         api_key_last4=tenant.api_key_last4,
         calendly_url=tenant.calendly_url,
         contact_email=tenant.contact_email,
+        widget_public_key=tenant.widget_public_key,
     )

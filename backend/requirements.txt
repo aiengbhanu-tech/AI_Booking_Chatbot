@@ -18,3 +18,5 @@ openai==1.54.4
 
 python-multipart==0.0.12
 sentence-transformers
+
+stripe

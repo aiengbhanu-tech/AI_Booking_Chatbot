@@ -5,9 +5,9 @@ from alembic import context
 from app.core.config import settings
 from app.core.db import Base
 
-# Import models so Alembic sees them
 from app.tenants.models import Tenant  # noqa: F401
 from app.leads.models import Lead  # noqa: F401
+from app.analytics.models import ChatMessage  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
