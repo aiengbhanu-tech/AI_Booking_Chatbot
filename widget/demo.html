@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Agent Widget Demo</title>
+</head>
+<body>
+  <h1>Demo Website</h1>
+  <p>This is a local demo page for the widget.</p>
+
+  <script src="./widget.js"></script>
+  <script>
+    AIAgentWidget.init({
+      apiBase: "http://localhost:8000",
+      apiKey: "aNEbhzvrH0-2cGZ8WG22yZoRUMIYbMWgo7Cp0GB7Dc",
+      title: "Radiance Dentistry Assistant",
+      position: "right",
+      welcomeMessage: "Hi! Ask anything about our dental services."
+    });
+  </script>
+</body>
+</html>
