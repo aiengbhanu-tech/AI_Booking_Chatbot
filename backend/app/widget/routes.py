@@ -6,6 +6,7 @@ import json
 from app.core.db import get_db
 from app.tenants.models import Tenant
 from app.rag.chat_service import run_chat, stream_chat
+from app.leads.models import Lead
 
 router = APIRouter()
 
@@ -61,3 +62,31 @@ def widget_chat_stream(
             yield f"data: {json.dumps(chunk)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/lead")
+def widget_create_lead(payload: dict, db: Session = Depends(get_db)):
+    widget_key = payload.get("widget_key")
+    tenant = db.query(Tenant).filter(Tenant.widget_public_key == widget_key).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    lead = Lead(
+        tenant_id=tenant.id,
+        name=payload.get("name"),
+        email=payload.get("email"),
+        phone=payload.get("phone"),
+        intent=payload.get("intent", "inquiry"),
+        notes=payload.get("notes"),
+        session_id=payload.get("session_id"),
+    )
+
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    return {
+        "ok": True,
+        "lead_id": lead.id,
+        "message": "Lead submitted successfully"
+    }

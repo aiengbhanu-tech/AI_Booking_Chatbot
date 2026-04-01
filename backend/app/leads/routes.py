@@ -1,5 +1,6 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -11,16 +12,15 @@ router = APIRouter()
 
 
 class LeadOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str | None
     email: str | None
     phone: str | None
     intent: str
     notes: str | None
-    created_at: str
-
-    class Config:
-        from_attributes = True
+    created_at: datetime
 
 
 @router.get("", response_model=list[LeadOut])

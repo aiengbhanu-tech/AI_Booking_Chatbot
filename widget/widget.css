@@ -133,3 +133,81 @@
   0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
   40% { transform: scale(1); opacity: 1; }
 }
+
+.ai-form-wrap {
+  padding: 10px;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+}
+
+.lead-form-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.lead-form-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #111827;
+}
+
+.lead-form-helper {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.lead-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.lead-textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.lead-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lead-submit,
+.lead-cancel {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lead-submit {
+  background: #2563eb;
+  color: white;
+}
+
+.lead-cancel {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.lead-status {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.lead-status.success {
+  color: #15803d;
+}
+
+.lead-status.error {
+  color: #b91c1c;
+}
