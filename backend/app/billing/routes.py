@@ -40,7 +40,10 @@ def create_checkout(
         metadata={"tenant_id": str(tenant.id), "plan": plan},
     )
 
-    return {"checkout_url": checkout.url}
+    return {
+        "checkout_url": checkout.url,
+        "plan": plan,
+    }
 
 
 @router.post("/webhook")

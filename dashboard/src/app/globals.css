@@ -334,3 +334,70 @@ textarea {
     font-size: 28px;
   }
 }
+
+.billing-top {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.billing-status-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  background: #fbfcff;
+}
+
+.billing-value {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.plan-card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 20px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.plan-featured {
+  border: 1px solid #bfd4ff;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.plan-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.plan-price {
+  font-size: 30px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.plan-features {
+  margin: 0 0 18px;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .billing-top,
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+}

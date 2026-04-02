@@ -27,6 +27,9 @@ type Tenant = {
   calendly_url: string | null;
   contact_email: string | null;
   widget_public_key: string;
+  plan_name: string | null;
+  subscription_status: string | null;
+  stripe_customer_id: string | None;
 };
 
 export default function Dashboard() {
@@ -38,6 +41,7 @@ export default function Dashboard() {
   } | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [billingLoading, setBillingLoading] = useState<string | null>(null);
 
   async function loadDashboard() {
     try {
@@ -70,6 +74,37 @@ export default function Dashboard() {
     }
   }
 
+  async function startCheckout(plan: "starter" | "growth" | "pro") {
+    try {
+      setBillingLoading(plan);
+
+      const res = await fetch(`http://localhost:8000/v1/billing/checkout?plan=${plan}`, {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+        },
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Checkout failed");
+      }
+
+      const json = await res.json();
+
+      if (json.checkout_url) {
+        window.open(json.checkout_url, "_blank");
+      } else {
+        alert("No checkout URL returned.");
+      }
+    } catch (err) {
+      console.error("Billing error:", err);
+      alert("Could not start checkout. Check Stripe setup.");
+    } finally {
+      setBillingLoading(null);
+    }
+  }
+
   function copy(text: string, label = "Copied!") {
     navigator.clipboard.writeText(text);
     alert(label);
@@ -87,7 +122,7 @@ export default function Dashboard() {
             <div className="eyebrow">AI Receptionist SaaS</div>
             <h1 className="title">Client Dashboard</h1>
             <p className="subtitle">
-              Monitor leads, conversations, and widget setup for your clinic.
+              Monitor leads, conversations, billing, and widget setup for your clinic.
             </p>
           </div>
         </div>
@@ -118,21 +153,79 @@ export default function Dashboard() {
         {data && (
           <>
             <section className="stats-grid">
-              <StatCard
-                title="Total Leads"
-                value={data.summary.total_leads}
-                tone="blue"
-              />
-              <StatCard
-                title="Callback Requests"
-                value={data.summary.callback_requests}
-                tone="purple"
-              />
-              <StatCard
-                title="Total Messages"
-                value={data.summary.total_messages}
-                tone="green"
-              />
+              <StatCard title="Total Leads" value={data.summary.total_leads} tone="blue" />
+              <StatCard title="Callback Requests" value={data.summary.callback_requests} tone="purple" />
+              <StatCard title="Total Messages" value={data.summary.total_messages} tone="green" />
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">Billing & Subscription</h2>
+                  <p className="panel-subtitle">
+                    Manage the current plan and upgrade this clinic account.
+                  </p>
+                </div>
+              </div>
+
+              <div className="billing-top">
+                <div className="billing-status-card">
+                  <div className="info-label">Current Plan</div>
+                  <div className="billing-value">{data.tenant.plan_name || "Free / Not Set"}</div>
+                </div>
+
+                <div className="billing-status-card">
+                  <div className="info-label">Subscription Status</div>
+                  <div className="billing-value">{data.tenant.subscription_status || "inactive"}</div>
+                </div>
+
+                <div className="billing-status-card">
+                  <div className="info-label">Stripe Customer</div>
+                  <div className="billing-value">
+                    {data.tenant.stripe_customer_id || "Not linked yet"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pricing-grid">
+                <PlanCard
+                  title="Starter"
+                  price="$49/mo"
+                  features={[
+                    "Basic AI assistant",
+                    "Website embed",
+                    "Lead capture",
+                    "Up to 500 conversations/month",
+                  ]}
+                  buttonLabel={billingLoading === "starter" ? "Opening..." : "Choose Starter"}
+                  onClick={() => startCheckout("starter")}
+                />
+                <PlanCard
+                  title="Growth"
+                  price="$99/mo"
+                  featured
+                  features={[
+                    "AI assistant + booking CTA",
+                    "Lead capture + dashboard",
+                    "Priority support",
+                    "Up to 2,000 conversations/month",
+                  ]}
+                  buttonLabel={billingLoading === "growth" ? "Opening..." : "Choose Growth"}
+                  onClick={() => startCheckout("growth")}
+                />
+                <PlanCard
+                  title="Pro"
+                  price="$199/mo"
+                  features={[
+                    "Multi-location support",
+                    "Advanced analytics",
+                    "Higher limits",
+                    "Premium onboarding",
+                  ]}
+                  buttonLabel={billingLoading === "pro" ? "Opening..." : "Choose Pro"}
+                  onClick={() => startCheckout("pro")}
+                />
+              </div>
             </section>
 
             <section className="grid two-col">
@@ -146,23 +239,15 @@ export default function Dashboard() {
 
                 <div className="info-list">
                   <InfoRow label="Clinic Name" value={data.tenant.name} />
-                  <InfoRow
-                    label="Website"
-                    value={data.tenant.website_url || "Not set"}
-                  />
-                  <InfoRow
-                    label="Calendly"
-                    value={data.tenant.calendly_url || "Not configured"}
-                  />
+                  <InfoRow label="Website" value={data.tenant.website_url || "Not set"} />
+                  <InfoRow label="Calendly" value={data.tenant.calendly_url || "Not configured"} />
                   <InfoRow
                     label="Widget Key"
                     value={data.tenant.widget_public_key}
                     action={
                       <button
                         className="ghost-btn"
-                        onClick={() =>
-                          copy(data.tenant.widget_public_key, "Widget key copied")
-                        }
+                        onClick={() => copy(data.tenant.widget_public_key, "Widget key copied")}
                       >
                         Copy
                       </button>
@@ -192,9 +277,7 @@ export default function Dashboard() {
                   </button>
                   <button
                     className="ghost-btn"
-                    onClick={() =>
-                      copy(data.tenant.widget_public_key, "Widget key copied")
-                    }
+                    onClick={() => copy(data.tenant.widget_public_key, "Widget key copied")}
                   >
                     Copy Widget Key
                   </button>
@@ -226,25 +309,14 @@ export default function Dashboard() {
                           <div className="lead-name">{lead.name || "Unknown visitor"}</div>
                           <div className="lead-meta">{lead.intent}</div>
                         </div>
-                        <span className={`badge badge-${lead.intent}`}>
-                          {lead.intent}
-                        </span>
+                        <span className={`badge badge-${lead.intent}`}>{lead.intent}</span>
                       </div>
 
                       <div className="lead-details">
-                        <div>
-                          <span className="muted">Phone:</span> {lead.phone || "-"}
-                        </div>
-                        <div>
-                          <span className="muted">Email:</span> {lead.email || "-"}
-                        </div>
-                        <div>
-                          <span className="muted">Notes:</span> {lead.notes || "-"}
-                        </div>
-                        <div>
-                          <span className="muted">Created:</span>{" "}
-                          {new Date(lead.created_at).toLocaleString()}
-                        </div>
+                        <div><span className="muted">Phone:</span> {lead.phone || "-"}</div>
+                        <div><span className="muted">Email:</span> {lead.email || "-"}</div>
+                        <div><span className="muted">Notes:</span> {lead.notes || "-"}</div>
+                        <div><span className="muted">Created:</span> {new Date(lead.created_at).toLocaleString()}</div>
                       </div>
                     </div>
                   ))}
@@ -306,6 +378,37 @@ function EmptyState({
     <div className="empty-state">
       <div className="empty-title">{title}</div>
       <div className="empty-description">{description}</div>
+    </div>
+  );
+}
+
+function PlanCard({
+  title,
+  price,
+  features,
+  buttonLabel,
+  onClick,
+  featured = false,
+}: {
+  title: string;
+  price: string;
+  features: string[];
+  buttonLabel: string;
+  onClick: () => void;
+  featured?: boolean;
+}) {
+  return (
+    <div className={`plan-card ${featured ? "plan-featured" : ""}`}>
+      <div className="plan-title">{title}</div>
+      <div className="plan-price">{price}</div>
+      <ul className="plan-features">
+        {features.map((f) => (
+          <li key={f}>{f}</li>
+        ))}
+      </ul>
+      <button className={featured ? "primary-btn" : "ghost-btn"} onClick={onClick}>
+        {buttonLabel}
+      </button>
     </div>
   );
 }

@@ -74,6 +74,9 @@ class TenantMeOut(BaseModel):
     calendly_url: str | None
     contact_email: str | None
     widget_public_key: str
+    plan_name: str | None
+    subscription_status: str | None
+    stripe_customer_id: str | None
 
 
 @router.get("/me", response_model=TenantMeOut)
@@ -86,4 +89,7 @@ def me(tenant: Tenant = Depends(get_current_tenant)):
         calendly_url=tenant.calendly_url,
         contact_email=tenant.contact_email,
         widget_public_key=tenant.widget_public_key,
+        plan_name=tenant.plan_name,
+        subscription_status=tenant.subscription_status,
+        stripe_customer_id=tenant.stripe_customer_id,
     )
