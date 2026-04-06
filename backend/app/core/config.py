@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str | None = None
-    OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
+    OPENAI_CHAT_MODEL: str = "gpt-5.4-mini"
     OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
     
     # AI provider selection

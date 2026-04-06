@@ -380,7 +380,6 @@ def run_chat(
             "sources": [],
         }
 
-
 def stream_chat(db, tenant, user_message: str, session_id: str | None = None):
     try:
         save_chat_message(db, tenant.id, session_id, "user", user_message)
@@ -393,8 +392,10 @@ def stream_chat(db, tenant, user_message: str, session_id: str | None = None):
         if settings.CHAT_PROVIDER == "mock":
             answer = _build_human_fallback_answer(user_message, snippets, tenant)
             save_chat_message(db, tenant.id, session_id, "assistant", answer)
+
             for token in answer.split():
                 yield {"type": "token", "content": token + " "}
+
             yield {
                 "type": "done",
                 "answer": answer,
@@ -431,11 +432,12 @@ def stream_chat(db, tenant, user_message: str, session_id: str | None = None):
 
             save_chat_message(db, tenant.id, session_id, "assistant", full_text)
 
+            # IMPORTANT: send fallback/intent actions even for OpenAI streaming path
             yield {
                 "type": "done",
                 "answer": full_text,
                 "sources": [{"url": s.get("url"), "score": s.get("score")} for s in snippets],
-                "actions": [],
+                "actions": _fallback_actions(tenant, user_message),
             }
 
         except Exception as openai_error:
