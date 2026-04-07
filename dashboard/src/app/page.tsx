@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
+  "http://localhost:8000";
+
 type Summary = {
   tenant_id: number;
   total_leads: number;
@@ -29,7 +33,7 @@ type Tenant = {
   widget_public_key: string;
   plan_name: string | null;
   subscription_status: string | null;
-  stripe_customer_id: string | None;
+  stripe_customer_id: string | null;
 };
 
 export default function Dashboard() {
@@ -45,22 +49,29 @@ export default function Dashboard() {
 
   async function loadDashboard() {
     try {
+      if (!apiKey.trim()) {
+        alert("Please paste your private API key.");
+        return;
+      }
+
       setLoading(true);
 
-      const summaryRes = await fetch("http://localhost:8000/v1/analytics/summary", {
-        headers: { "X-API-Key": apiKey },
+      const headers = { "X-API-Key": apiKey.trim() };
+
+      const summaryRes = await fetch(`${API_BASE}/v1/analytics/summary`, {
+        headers,
       });
       if (!summaryRes.ok) throw new Error(`Summary failed: ${summaryRes.status}`);
       const summary = await summaryRes.json();
 
-      const leadsRes = await fetch("http://localhost:8000/v1/leads", {
-        headers: { "X-API-Key": apiKey },
+      const leadsRes = await fetch(`${API_BASE}/v1/leads`, {
+        headers,
       });
       if (!leadsRes.ok) throw new Error(`Leads failed: ${leadsRes.status}`);
       const leads = await leadsRes.json();
 
-      const tenantRes = await fetch("http://localhost:8000/v1/tenants/me", {
-        headers: { "X-API-Key": apiKey },
+      const tenantRes = await fetch(`${API_BASE}/v1/tenants/me`, {
+        headers,
       });
       if (!tenantRes.ok) throw new Error(`Tenant failed: ${tenantRes.status}`);
       const tenant = await tenantRes.json();
@@ -68,7 +79,7 @@ export default function Dashboard() {
       setData({ summary, leads, tenant });
     } catch (err) {
       console.error("Dashboard load error:", err);
-      alert("Could not load dashboard. Check backend is running and API key is correct.");
+      alert("Could not load dashboard. Check backend URL, CORS, backend status, and API key.");
     } finally {
       setLoading(false);
     }
@@ -76,12 +87,17 @@ export default function Dashboard() {
 
   async function startCheckout(plan: "starter" | "growth" | "pro") {
     try {
+      if (!apiKey.trim()) {
+        alert("Please paste your private API key first.");
+        return;
+      }
+
       setBillingLoading(plan);
 
-      const res = await fetch(`http://localhost:8000/v1/billing/checkout?plan=${plan}`, {
+      const res = await fetch(`${API_BASE}/v1/billing/checkout?plan=${plan}`, {
         method: "POST",
         headers: {
-          "X-API-Key": apiKey,
+          "X-API-Key": apiKey.trim(),
         },
       });
 
@@ -93,25 +109,30 @@ export default function Dashboard() {
       const json = await res.json();
 
       if (json.checkout_url) {
-        window.open(json.checkout_url, "_blank");
+        window.open(json.checkout_url, "_blank", "noopener,noreferrer");
       } else {
         alert("No checkout URL returned.");
       }
     } catch (err) {
       console.error("Billing error:", err);
-      alert("Could not start checkout. Check Stripe setup.");
+      alert("Could not start checkout. Check Stripe setup and backend config.");
     } finally {
       setBillingLoading(null);
     }
   }
 
-  function copy(text: string, label = "Copied!") {
-    navigator.clipboard.writeText(text);
-    alert(label);
+  async function copy(text: string, label = "Copied!") {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(label);
+    } catch (err) {
+      console.error("Copy failed:", err);
+      alert("Copy failed.");
+    }
   }
 
   const embedSnippet = data
-    ? `<script src="http://localhost:8000/widget/widget.js" data-tenant-key="${data.tenant.widget_public_key}" data-api-base="http://localhost:8000"></script>`
+    ? `<script src="${API_BASE}/widget/widget.js" data-tenant-key="${data.tenant.widget_public_key}" data-api-base="${API_BASE}"></script>`
     : "";
 
   return (
@@ -154,7 +175,11 @@ export default function Dashboard() {
           <>
             <section className="stats-grid">
               <StatCard title="Total Leads" value={data.summary.total_leads} tone="blue" />
-              <StatCard title="Callback Requests" value={data.summary.callback_requests} tone="purple" />
+              <StatCard
+                title="Callback Requests"
+                value={data.summary.callback_requests}
+                tone="purple"
+              />
               <StatCard title="Total Messages" value={data.summary.total_messages} tone="green" />
             </section>
 
@@ -176,7 +201,9 @@ export default function Dashboard() {
 
                 <div className="billing-status-card">
                   <div className="info-label">Subscription Status</div>
-                  <div className="billing-value">{data.tenant.subscription_status || "inactive"}</div>
+                  <div className="billing-value">
+                    {data.tenant.subscription_status || "inactive"}
+                  </div>
                 </div>
 
                 <div className="billing-status-card">
@@ -313,10 +340,19 @@ export default function Dashboard() {
                       </div>
 
                       <div className="lead-details">
-                        <div><span className="muted">Phone:</span> {lead.phone || "-"}</div>
-                        <div><span className="muted">Email:</span> {lead.email || "-"}</div>
-                        <div><span className="muted">Notes:</span> {lead.notes || "-"}</div>
-                        <div><span className="muted">Created:</span> {new Date(lead.created_at).toLocaleString()}</div>
+                        <div>
+                          <span className="muted">Phone:</span> {lead.phone || "-"}
+                        </div>
+                        <div>
+                          <span className="muted">Email:</span> {lead.email || "-"}
+                        </div>
+                        <div>
+                          <span className="muted">Notes:</span> {lead.notes || "-"}
+                        </div>
+                        <div>
+                          <span className="muted">Created:</span>{" "}
+                          {new Date(lead.created_at).toLocaleString()}
+                        </div>
                       </div>
                     </div>
                   ))}
