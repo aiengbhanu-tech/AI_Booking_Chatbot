@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, BackgroundTasks
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, EmailStr
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -18,8 +18,8 @@ router = APIRouter()
 class TenantCreateIn(BaseModel):
     name: str
     website_url: HttpUrl | None = None
-    contact_email: str | None = None
-    calendly_url: str | None = None
+    contact_email: EmailStr | None = None
+    calendly_url: HttpUrl | None = None
 
 
 class TenantCreateOut(BaseModel):
@@ -43,7 +43,7 @@ def create_tenant(
         name=payload.name,
         website_url=str(payload.website_url) if payload.website_url else None,
         contact_email=payload.contact_email,
-        calendly_url=payload.calendly_url,
+        calendly_url=str(payload.calendly_url) if payload.calendly_url else None,
         api_key_hash=_hash_api_key(api_key),
         api_key_last4=api_key[-4:],
         widget_public_key=widget_key,
@@ -81,15 +81,4 @@ class TenantMeOut(BaseModel):
 
 @router.get("/me", response_model=TenantMeOut)
 def me(tenant: Tenant = Depends(get_current_tenant)):
-    return TenantMeOut(
-        id=tenant.id,
-        name=tenant.name,
-        website_url=tenant.website_url,
-        api_key_last4=tenant.api_key_last4,
-        calendly_url=tenant.calendly_url,
-        contact_email=tenant.contact_email,
-        widget_public_key=tenant.widget_public_key,
-        plan_name=tenant.plan_name,
-        subscription_status=tenant.subscription_status,
-        stripe_customer_id=tenant.stripe_customer_id,
-    )
+    return tenant

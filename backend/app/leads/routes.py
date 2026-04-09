@@ -29,10 +29,13 @@ def list_leads(
     db: Session = Depends(get_db),
     limit: int = 50,
 ):
+    limit = min(max(limit, 1), 200)
+
     q = (
         db.query(Lead)
         .filter(Lead.tenant_id == tenant.id)
         .order_by(Lead.created_at.desc())
-        .limit(min(limit, 200))
+        .limit(limit)
     )
+
     return q.all()

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 import json
 
 from app.core.db import get_db
@@ -11,11 +12,44 @@ from app.leads.models import Lead
 router = APIRouter()
 
 
-@router.get("/config")
-def widget_config(widget_key: str, db: Session = Depends(get_db)):
+# -------------------------
+# Schemas
+# -------------------------
+
+class ChatRequest(BaseModel):
+    widget_key: str
+    message: str
+    session_id: str | None = None
+
+
+class LeadRequest(BaseModel):
+    widget_key: str
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    intent: str = "inquiry"
+    notes: str | None = None
+    session_id: str | None = None
+
+
+# -------------------------
+# Helpers
+# -------------------------
+
+def get_tenant_by_widget_key(widget_key: str, db: Session) -> Tenant:
     tenant = db.query(Tenant).filter(Tenant.widget_public_key == widget_key).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
+
+
+# -------------------------
+# Routes
+# -------------------------
+
+@router.get("/config")
+def widget_config(widget_key: str, db: Session = Depends(get_db)):
+    tenant = get_tenant_by_widget_key(widget_key, db)
 
     return {
         "tenant_name": tenant.name,
@@ -27,17 +61,17 @@ def widget_config(widget_key: str, db: Session = Depends(get_db)):
 
 
 @router.post("/chat")
-def widget_chat(payload: dict, db: Session = Depends(get_db)):
-    widget_key = payload.get("widget_key")
-    tenant = db.query(Tenant).filter(Tenant.widget_public_key == widget_key).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+def widget_chat(payload: ChatRequest, db: Session = Depends(get_db)):
+    tenant = get_tenant_by_widget_key(payload.widget_key, db)
+
+    if not payload.message:
+        raise HTTPException(status_code=400, detail="Message is required")
 
     return run_chat(
         db=db,
         tenant=tenant,
-        user_message=payload.get("message"),
-        session_id=payload.get("session_id"),
+        user_message=payload.message,
+        session_id=payload.session_id,
     )
 
 
@@ -48,9 +82,7 @@ def widget_chat_stream(
     session_id: str,
     db: Session = Depends(get_db),
 ):
-    tenant = db.query(Tenant).filter(Tenant.widget_public_key == widget_key).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = get_tenant_by_widget_key(widget_key, db)
 
     def event_generator():
         for chunk in stream_chat(
@@ -61,24 +93,28 @@ def widget_chat_stream(
         ):
             yield f"data: {json.dumps(chunk)}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @router.post("/lead")
-def widget_create_lead(payload: dict, db: Session = Depends(get_db)):
-    widget_key = payload.get("widget_key")
-    tenant = db.query(Tenant).filter(Tenant.widget_public_key == widget_key).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+def widget_create_lead(payload: LeadRequest, db: Session = Depends(get_db)):
+    tenant = get_tenant_by_widget_key(payload.widget_key, db)
 
     lead = Lead(
         tenant_id=tenant.id,
-        name=payload.get("name"),
-        email=payload.get("email"),
-        phone=payload.get("phone"),
-        intent=payload.get("intent", "inquiry"),
-        notes=payload.get("notes"),
-        session_id=payload.get("session_id"),
+        name=payload.name,
+        email=payload.email,
+        phone=payload.phone,
+        intent=payload.intent,
+        notes=payload.notes,
+        session_id=payload.session_id,
     )
 
     db.add(lead)
