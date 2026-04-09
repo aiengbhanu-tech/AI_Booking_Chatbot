@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI Agent SaaS"
     ENV: str = "dev"
     API_KEY_SALT: str = "change-me-super-secret"
+    APP_BASE_URL: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000"]
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg2://app:app@localhost:5432/app"
@@ -20,9 +23,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_CHAT_MODEL: str = "gpt-5.4-mini"
     OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
-    
+
     # AI provider selection
-    EMBEDDING_PROVIDER: str = "sentence_transformers"
+    EMBEDDING_PROVIDER: str = "openai"
     CHAT_PROVIDER: str = "openai"
     SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
 
@@ -35,13 +38,20 @@ class Settings(BaseSettings):
     # RAG
     TOP_K: int = 6
     MAX_CONTEXT_CHARS: int = 12000
-    
+
     # Stripe
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None
     STRIPE_PRICE_STARTER: str | None = None
     STRIPE_PRICE_GROWTH: str | None = None
     STRIPE_PRICE_PRO: str | None = None
-    APP_BASE_URL: str = "http://localhost:3000"
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
 
 settings = Settings()

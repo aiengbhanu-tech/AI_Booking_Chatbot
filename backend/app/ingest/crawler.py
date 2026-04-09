@@ -45,7 +45,8 @@ def crawl_internal_pages(website_url: str, max_pages: int | None = None) -> list
     visited: set[str] = set()
     queue: list[str] = [base]
 
-    with httpx.Client(timeout=settings.CRAWL_TIMEOUT_SECONDS, follow_redirects=True) as client:
+    with httpx.Client(timeout=settings.CRAWL_TIMEOUT_SECONDS, follow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; AI-Agent/1.0)"}) as client:
         while queue and len(visited) < max_pages:
             url = _normalize_url(queue.pop(0))
             if url in visited:
@@ -84,7 +85,8 @@ def crawl_internal_pages(website_url: str, max_pages: int | None = None) -> list
 
 
 def fetch_html(url: str) -> str:
-    with httpx.Client(timeout=settings.CRAWL_TIMEOUT_SECONDS, follow_redirects=True) as client:
+    with httpx.Client(timeout=settings.CRAWL_TIMEOUT_SECONDS, follow_redirects=True,
+    headers={"User-Agent": "Mozilla/5.0 (compatible; AI-Agent/1.0)"}) as client:
         r = client.get(url)
         r.raise_for_status()
         return r.text

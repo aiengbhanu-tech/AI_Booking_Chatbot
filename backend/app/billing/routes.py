@@ -9,8 +9,11 @@ from app.tenants.models import Tenant
 
 router = APIRouter()
 
-if settings.STRIPE_SECRET_KEY:
+def get_stripe():
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
     stripe.api_key = settings.STRIPE_SECRET_KEY
+    return stripe
 
 
 @router.post("/checkout")
@@ -19,6 +22,7 @@ def create_checkout(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
+    stripe_client = get_stripe()
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status_code=500, detail="Stripe not configured")
 
@@ -32,7 +36,7 @@ def create_checkout(
     if not price_id:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
-    checkout = stripe.checkout.Session.create(
+    checkout = stripe_client.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
         success_url=f"{settings.APP_BASE_URL}/billing?success=1",
