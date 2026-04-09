@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -17,6 +17,10 @@ from app.ingest.embeddings import embed_texts
 router = APIRouter()
 
 
+# -----------------------------
+# Schemas
+# -----------------------------
+
 class IngestRequest(BaseModel):
     website_url: HttpUrl | None = None
     max_pages: int | None = None
@@ -28,31 +32,54 @@ class IngestResponse(BaseModel):
     chunks_indexed: int
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
+
 def _get_embedding_dimension() -> int:
-    probe = embed_texts(["hello world"])
-    if not probe or not probe[0]:
-        raise RuntimeError("Embedding provider returned empty vectors")
-    return len(probe[0])
+    if settings.EMBEDDING_PROVIDER == "openai":
+        return 1536  # text-embedding-3-small
+
+    if settings.EMBEDDING_PROVIDER == "sentence_transformers":
+        return 384  # MiniLM
+
+    raise ValueError(f"Unknown embedding provider: {settings.EMBEDDING_PROVIDER}")
 
 
 def _ensure_collection(qdrant: QdrantClient):
     collections = qdrant.get_collections().collections
     exists = any(c.name == settings.QDRANT_COLLECTION for c in collections)
+
     if not exists:
         vector_size = _get_embedding_dimension()
         qdrant.create_collection(
             collection_name=settings.QDRANT_COLLECTION,
-            vectors_config=qm.VectorParams(size=vector_size, distance=qm.Distance.COSINE),
+            vectors_config=qm.VectorParams(
+                size=vector_size,
+                distance=qm.Distance.COSINE
+            ),
         )
 
 
-def _run_ingestion(tenant: Tenant, website: str, db: Session, max_pages: int | None = None) -> dict:
+def _run_ingestion(
+    tenant: Tenant,
+    website: str,
+    db: Session,
+    max_pages: int | None = None
+) -> dict:
+
+    if not settings.QDRANT_URL:
+        raise RuntimeError("QDRANT_URL not set")
+
     qdrant = QdrantClient(url=settings.QDRANT_URL)
     _ensure_collection(qdrant)
 
     urls = fetch_sitemap_urls(website)
     if not urls:
-        urls = crawl_internal_pages(website, max_pages=max_pages or settings.CRAWL_MAX_PAGES)
+        urls = crawl_internal_pages(
+            website,
+            max_pages=max_pages or settings.CRAWL_MAX_PAGES
+        )
 
     urls = urls[: (max_pages or settings.CRAWL_MAX_PAGES)]
 
@@ -63,6 +90,7 @@ def _run_ingestion(tenant: Tenant, website: str, db: Session, max_pages: int | N
         try:
             html = fetch_html(url)
             text = html_to_text(html)
+
             if len(text) < 50:
                 continue
 
@@ -70,6 +98,7 @@ def _run_ingestion(tenant: Tenant, website: str, db: Session, max_pages: int | N
             vectors = embed_texts(chunks)
 
             points: list[qm.PointStruct] = []
+
             for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
                 points.append(
                     qm.PointStruct(
@@ -84,7 +113,11 @@ def _run_ingestion(tenant: Tenant, website: str, db: Session, max_pages: int | N
                     )
                 )
 
-            qdrant.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+            qdrant.upsert(
+                collection_name=settings.QDRANT_COLLECTION,
+                points=points
+            )
+
             pages_indexed += 1
             chunks_indexed += len(points)
 
@@ -99,37 +132,68 @@ def _run_ingestion(tenant: Tenant, website: str, db: Session, max_pages: int | N
     }
 
 
+# -----------------------------
+# Background task runner
+# -----------------------------
+
 def run_ingestion_for_tenant(tenant_id: int, website_url: str):
     db = SessionLocal()
     try:
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         if not tenant:
+            print(f"[INGEST ERROR] Tenant {tenant_id} not found")
             return
-        _run_ingestion(tenant=tenant, website=website_url, db=db)
+
+        _run_ingestion(
+            tenant=tenant,
+            website=website_url,
+            db=db
+        )
+
+        print(f"[INGEST SUCCESS] tenant={tenant_id}")
+
+    except Exception as e:
+        print(f"[INGEST FATAL ERROR] tenant={tenant_id} error={repr(e)}")
+
     finally:
         db.close()
 
 
+# -----------------------------
+# API Route
+# -----------------------------
+
 @router.post("", response_model=IngestResponse)
 def ingest_website(
     payload: IngestRequest,
+    background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
     website = str(payload.website_url) if payload.website_url else tenant.website_url
-    if not website:
-        raise HTTPException(status_code=400, detail="website_url missing (provide in request or set on tenant)")
 
+    if not website:
+        raise HTTPException(
+            status_code=400,
+            detail="website_url missing (provide in request or set on tenant)"
+        )
+
+    # Update tenant website if needed
     if payload.website_url and tenant.website_url != website:
         tenant.website_url = website
         db.add(tenant)
         db.commit()
         db.refresh(tenant)
 
-    result = _run_ingestion(
-        tenant=tenant,
-        website=website,
-        db=db,
-        max_pages=payload.max_pages,
+    # Run ingestion in background
+    background_tasks.add_task(
+        run_ingestion_for_tenant,
+        tenant.id,
+        website
     )
-    return IngestResponse(**result)
+
+    return IngestResponse(
+        tenant_id=tenant.id,
+        pages_indexed=0,
+        chunks_indexed=0
+    )
