@@ -1,29 +1,46 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any
 
 
 class ToolResult(BaseModel):
     ok: bool
     message: str
-    data: dict | None = None
+    data: Optional[Dict[str, Any]] = None
 
 
-# Tool schema for OpenAI function calling
+# OpenAI function/tool schema
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "create_lead",
-            "description": "Create a lead when user wants consultation/booking/callback or shares contact info.",
+            "description": "Create a lead when the user wants consultation, booking, callback, or shares contact info.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "email": {"type": "string"},
-                    "phone": {"type": "string"},
-                    "intent": {"type": "string", "description": "e.g. appointment, callback, pricing, service inquiry"},
-                    "notes": {"type": "string"},
+                    "name": {
+                        "type": "string",
+                        "description": "Full name of the user"
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Email address of the user"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number of the user"
+                    },
+                    "intent": {
+                        "type": "string",
+                        "description": "Intent such as appointment, callback, pricing, or service inquiry"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Additional notes from the user"
+                    },
                 },
                 "required": ["intent"],
+                "additionalProperties": False,
             },
         },
     },
@@ -31,15 +48,25 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "request_callback",
-            "description": "Request a callback/call scheduling when the user wants staff to call them.",
+            "description": "Request a callback when the user wants someone to call them.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "preferred_time": {"type": "string"},
-                    "phone": {"type": "string"},
-                    "notes": {"type": "string"},
+                    "preferred_time": {
+                        "type": "string",
+                        "description": "Preferred callback time"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number for callback"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Additional notes"
+                    },
                 },
                 "required": ["phone"],
+                "additionalProperties": False,
             },
         },
     },
@@ -47,8 +74,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "book_via_calendly",
-            "description": "Provide Calendly booking link if tenant has it configured.",
-            "parameters": {"type": "object", "properties": {"notes": {"type": "string"}}, "required": []},
+            "description": "Provide a Calendly booking link if available.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional message or context"
+                    }
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
         },
     },
 ]

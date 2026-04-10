@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,10 @@ from app.rag.chat_service import run_chat
 
 router = APIRouter()
 
+
+# -------------------------
+# Schemas
+# -------------------------
 
 class ChatIn(BaseModel):
     message: str
@@ -21,11 +25,38 @@ class ChatOut(BaseModel):
     sources: list[dict]
 
 
+# -------------------------
+# Route
+# -------------------------
+
 @router.post("/chat", response_model=ChatOut)
 def chat(
     payload: ChatIn,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    result = run_chat(db=db, tenant=tenant, user_message=payload.message, session_id=payload.session_id)
-    return ChatOut(**result)
+    # Validate input
+    if not payload.message or not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    try:
+        result = run_chat(
+            db=db,
+            tenant=tenant,
+            user_message=payload.message,
+            session_id=payload.session_id,
+        )
+
+        # Basic structure validation
+        if not isinstance(result, dict):
+            raise ValueError("Invalid response format from chat service")
+
+        return ChatOut(**result)
+
+    except Exception as e:
+        print(f"[CHAT ERROR] tenant={tenant.id} error={repr(e)}")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong while processing the chat request"
+        )
