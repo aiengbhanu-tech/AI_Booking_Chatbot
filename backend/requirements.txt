@@ -20,3 +20,4 @@ python-multipart==0.0.12
 sentence-transformers
 
 stripe
+pydantic[email]
