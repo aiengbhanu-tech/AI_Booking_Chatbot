@@ -71,7 +71,8 @@ def _run_ingestion(
     if not settings.QDRANT_URL:
         raise RuntimeError("QDRANT_URL not set")
 
-    qdrant = QdrantClient(url=settings.QDRANT_URL)
+    qdrant = QdrantClient(url=settings.QDRANT_URL,
+                          api_key=settings.QDRANT_API_KEY)
     _ensure_collection(qdrant)
 
     urls = fetch_sitemap_urls(website)
@@ -153,7 +154,9 @@ def run_ingestion_for_tenant(tenant_id: int, website_url: str):
         print(f"[INGEST SUCCESS] tenant={tenant_id}")
 
     except Exception as e:
+        import traceback
         print(f"[INGEST FATAL ERROR] tenant={tenant_id} error={repr(e)}")
+        traceback.print_exc()
 
     finally:
         db.close()

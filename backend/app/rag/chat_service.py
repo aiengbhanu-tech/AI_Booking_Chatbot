@@ -165,7 +165,8 @@ def run_chat(db: Session, tenant: Tenant, user_message: str, session_id: str | N
         snippets = []
         if settings.QDRANT_URL and q_vec:
             try:
-                qdrant = QdrantClient(url=settings.QDRANT_URL)
+                qdrant = QdrantClient(url=settings.QDRANT_URL,
+                        api_key=settings.QDRANT_API_KEY)
                 snippets = retrieve_context(qdrant, tenant.id, q_vec)
             except Exception as e:
                 print("[QDRANT ERROR]", e)
@@ -245,7 +246,8 @@ def stream_chat(db, tenant, user_message: str, session_id: str | None = None):
         snippets = []
         if settings.QDRANT_URL and q_vec:
             try:
-                qdrant = QdrantClient(url=settings.QDRANT_URL)
+                qdrant = QdrantClient(url=settings.QDRANT_URL,
+                        api_key=settings.QDRANT_API_KEY)
                 snippets = retrieve_context(qdrant, tenant.id, q_vec)
             except:
                 pass

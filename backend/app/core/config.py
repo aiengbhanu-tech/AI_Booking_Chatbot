@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg2://app:app@localhost:5432/app"
 
     # Qdrant
+    QDRANT_API_KEY: str | None = None
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION: str = "website_chunks"
 
