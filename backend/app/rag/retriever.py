@@ -33,7 +33,9 @@ def retrieve_context(
         )
 
     except Exception as e:
+        import traceback
         print(f"[RETRIEVER ERROR] tenant={tenant_id} error={repr(e)}")
+        traceback.print_exc()
         return []
 
     results: list[dict] = []
