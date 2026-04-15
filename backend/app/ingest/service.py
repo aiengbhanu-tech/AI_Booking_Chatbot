@@ -56,9 +56,19 @@ def _ensure_collection(qdrant: QdrantClient):
             collection_name=settings.QDRANT_COLLECTION,
             vectors_config=qm.VectorParams(
                 size=vector_size,
-                distance=qm.Distance.COSINE
+                distance=qm.Distance.COSINE,
             ),
         )
+
+    # Ensure payload index for tenant_id exists
+    try:
+        qdrant.create_payload_index(
+            collection_name=settings.QDRANT_COLLECTION,
+            field_name="tenant_id",
+            field_schema=qm.PayloadSchemaType.INTEGER,
+        )
+    except Exception as e:
+        print(f"[QDRANT INDEX WARNING] {repr(e)}")
 
 
 def _run_ingestion(
