@@ -44,6 +44,7 @@
       border-radius: 8px;
       font-weight: bold;
       text-decoration: none;
+      cursor: pointer;
     }
 
     .section {
@@ -67,10 +68,24 @@
       background: #0f172a;
       color: white;
     }
+
+    /* 🔥 DEMO BANNER */
+    .demo-banner {
+      background: #16a34a;
+      color: white;
+      text-align: center;
+      padding: 10px;
+      font-size: 14px;
+    }
   </style>
 </head>
 
 <body>
+
+<!-- 🔥 DEMO NOTICE -->
+<div class="demo-banner">
+  🚀 This is a live AI chatbot demo. Try chatting in bottom-right corner.
+</div>
 
 <div class="nav">
   <strong>SmileCare Dental</strong>
@@ -99,16 +114,26 @@
   © SmileCare Dental Clinic
 </div>
 
-<!-- YOUR WIDGET -->
-<script
-  src="http://localhost:8000/widget/widget.js"
-  data-tenant-key="pub_5mg0lA__sZTpJxTFTHJaeX6vhTPMxttD"
-  data-api-base="http://localhost:8000">
-</script>
-<script
-  src="https://aibookingchatbot-production.up.railway.app/widget/widget.js"
-  data-tenant-key="pub_JHAsLnto12IE_S66uP_t3XrOt8ANHiun"
-  data-api-base="https://aibookingchatbot-production.up.railway.app">
+<!-- 🔥 DYNAMIC WIDGET LOADER -->
+<script>
+  const params = new URLSearchParams(window.location.search);
+
+  // 👉 dynamic key from URL
+  const tenantKey = params.get("key");
+
+  const API_BASE = "https://aibookingchatbot-production.up.railway.app";
+
+  if (!tenantKey) {
+    console.error("❌ Missing widget key in URL");
+    alert("Missing widget key. Open from dashboard.");
+  } else {
+    const script = document.createElement("script");
+    script.src = `${API_BASE}/widget/widget.js`;
+    script.setAttribute("data-tenant-key", tenantKey);
+    script.setAttribute("data-api-base", API_BASE);
+
+    document.body.appendChild(script);
+  }
 </script>
 
 </body>
