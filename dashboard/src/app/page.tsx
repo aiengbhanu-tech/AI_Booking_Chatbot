@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
@@ -36,6 +36,14 @@ type Tenant = {
   stripe_customer_id: string | null;
 };
 
+type TenantCreateResponse = {
+  id: number;
+  name: string;
+  api_key: string;
+  widget_key: string;
+  website_url: string | null;
+};
+
 export default function Dashboard() {
   const [apiKey, setApiKey] = useState("");
   const [data, setData] = useState<{
@@ -47,48 +55,133 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState<string | null>(null);
 
-  async function loadDashboard() {
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    website_url: "",
+    contact_email: "",
+  });
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem("api_key");
+    if (savedKey) {
+      setApiKey(savedKey);
+      void loadDashboard(savedKey);
+    }
+  }, []);
+
+  async function loadDashboard(customKey?: string) {
     try {
-      if (!apiKey.trim()) {
+      const key = (customKey || apiKey).trim();
+
+      if (!key) {
         alert("Please paste your private API key.");
         return;
       }
 
       setLoading(true);
 
-      const headers = { "X-API-Key": apiKey.trim() };
+      const headers = { "X-API-Key": key };
 
       const summaryRes = await fetch(`${API_BASE}/v1/analytics/summary`, {
         headers,
       });
-      if (!summaryRes.ok) throw new Error(`Summary failed: ${summaryRes.status}`);
-      const summary = await summaryRes.json();
+      if (!summaryRes.ok) {
+        throw new Error(`Summary failed: ${summaryRes.status}`);
+      }
+      const summary: Summary = await summaryRes.json();
 
       const leadsRes = await fetch(`${API_BASE}/v1/leads`, {
         headers,
       });
-      if (!leadsRes.ok) throw new Error(`Leads failed: ${leadsRes.status}`);
-      const leads = await leadsRes.json();
+      if (!leadsRes.ok) {
+        throw new Error(`Leads failed: ${leadsRes.status}`);
+      }
+      const leads: Lead[] = await leadsRes.json();
 
       const tenantRes = await fetch(`${API_BASE}/v1/tenants/me`, {
         headers,
       });
-      if (!tenantRes.ok) throw new Error(`Tenant failed: ${tenantRes.status}`);
-      const tenant = await tenantRes.json();
+      if (!tenantRes.ok) {
+        throw new Error(`Tenant failed: ${tenantRes.status}`);
+      }
+      const tenant: Tenant = await tenantRes.json();
 
+      localStorage.setItem("api_key", key);
+      localStorage.setItem("widget_key", tenant.widget_public_key);
+
+      setApiKey(key);
       setData({ summary, leads, tenant });
     } catch (err) {
       console.error("Dashboard load error:", err);
-      alert("Could not load dashboard. Check backend URL, CORS, backend status, and API key.");
+      alert("Could not load dashboard. Check backend URL, backend status, and API key.");
     } finally {
       setLoading(false);
     }
   }
 
+  async function createWorkspace() {
+    try {
+      if (!form.name.trim()) {
+        alert("Please enter clinic name.");
+        return;
+      }
+
+      setLoading(true);
+
+      const payload = {
+        name: form.name.trim(),
+        website_url: form.website_url.trim() || null,
+        contact_email: form.contact_email.trim() || null,
+      };
+
+      const res = await fetch(`${API_BASE}/v1/tenants`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Failed to create workspace");
+      }
+
+      const json: TenantCreateResponse = await res.json();
+
+      localStorage.setItem("api_key", json.api_key);
+      localStorage.setItem("widget_key", json.widget_key);
+
+      setApiKey(json.api_key);
+      setShowCreate(false);
+
+      await loadDashboard(json.api_key);
+    } catch (err) {
+      console.error("Workspace creation error:", err);
+      alert("Failed to create workspace.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("api_key");
+    localStorage.removeItem("widget_key");
+    setApiKey("");
+    setData(null);
+    setShowCreate(false);
+    setForm({
+      name: "",
+      website_url: "",
+      contact_email: "",
+    });
+  }
+
   async function startCheckout(plan: "starter" | "growth" | "pro") {
     try {
       if (!apiKey.trim()) {
-        alert("Please paste your private API key first.");
+        alert("Please load your dashboard first.");
         return;
       }
 
@@ -135,6 +228,10 @@ export default function Dashboard() {
     ? `<script src="${API_BASE}/widget/widget.js" data-tenant-key="${data.tenant.widget_public_key}" data-api-base="${API_BASE}"></script>`
     : "";
 
+  const demoUrl = data
+    ? `${API_BASE}/widget/demo.html?key=${encodeURIComponent(data.tenant.widget_public_key)}`
+    : "";
+
   return (
     <main className="page">
       <div className="container">
@@ -145,30 +242,108 @@ export default function Dashboard() {
             <p className="subtitle">
               Monitor leads, conversations, billing, and widget setup for your clinic.
             </p>
+            <p className="subtitle" style={{ marginTop: 8 }}>
+              Convert website visitors into leads and bookings automatically 24/7.
+            </p>
           </div>
         </div>
 
         <section className="panel top-panel">
           <div className="panel-header">
             <div>
-              <h2 className="panel-title">Load your workspace</h2>
+              <h2 className="panel-title">{data ? "Workspace Loaded" : "Get Started"}</h2>
               <p className="panel-subtitle">
-                Paste your private API key to access tenant data.
+                {data
+                  ? "Manage your chatbot, pricing, leads, and widget setup from one place."
+                  : "Create a new workspace or load an existing one with your private API key."}
               </p>
             </div>
+
+            {data && (
+              <button className="ghost-btn" onClick={logout}>
+                Logout
+              </button>
+            )}
           </div>
 
-          <div className="key-row">
-            <input
-              className="key-input"
-              placeholder="Paste private API key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            <button className="primary-btn" onClick={loadDashboard} disabled={loading}>
-              {loading ? "Loading..." : "Load Dashboard"}
-            </button>
-          </div>
+          {!data && !showCreate && (
+            <>
+              <div className="button-row" style={{ marginBottom: 16 }}>
+                <button className="primary-btn" onClick={() => setShowCreate(true)}>
+                  Create Workspace
+                </button>
+              </div>
+
+              <div className="key-row">
+                <input
+                  className="key-input"
+                  placeholder="Paste private API key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <button className="primary-btn" onClick={() => loadDashboard()} disabled={loading}>
+                  {loading ? "Loading..." : "Load Dashboard"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {!data && showCreate && (
+            <div className="form-grid" style={{ display: "grid", gap: 12 }}>
+              <div className="key-row">
+                <input
+                  className="key-input"
+                  placeholder="Clinic Name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+
+              <div className="key-row">
+                <input
+                  className="key-input"
+                  placeholder="Website URL"
+                  value={form.website_url}
+                  onChange={(e) => setForm({ ...form, website_url: e.target.value })}
+                />
+              </div>
+
+              <div className="key-row">
+                <input
+                  className="key-input"
+                  placeholder="Email"
+                  value={form.contact_email}
+                  onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+                />
+              </div>
+
+              <div className="button-row">
+                <button className="primary-btn" onClick={createWorkspace} disabled={loading}>
+                  {loading ? "Creating..." : "Create Workspace"}
+                </button>
+                <button className="ghost-btn" onClick={() => setShowCreate(false)}>
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {data && (
+            <div className="button-row" style={{ marginTop: 8 }}>
+              <button
+                className="primary-btn"
+                onClick={() => window.open(demoUrl, "_blank", "noopener,noreferrer")}
+              >
+                🚀 Test Chatbot Live
+              </button>
+              <button
+                className="ghost-btn"
+                onClick={() => copy(demoUrl, "Demo link copied")}
+              >
+                Copy Demo Link
+              </button>
+            </div>
+          )}
         </section>
 
         {data && (
@@ -214,6 +389,18 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              <div style={{ marginBottom: 18 }}>
+                <div className="info-label" style={{ marginBottom: 6 }}>
+                  Why this pays for itself
+                </div>
+                <div className="panel-subtitle">
+                  Just 1 extra client per month can easily cover the subscription cost.
+                </div>
+                <div className="panel-subtitle" style={{ marginTop: 4 }}>
+                  Limited early pricing for the first 20 customers.
+                </div>
+              </div>
+
               <div className="pricing-grid">
                 <PlanCard
                   title="Starter"
@@ -224,7 +411,7 @@ export default function Dashboard() {
                     "Lead capture",
                     "Up to 500 conversations/month",
                   ]}
-                  buttonLabel={billingLoading === "starter" ? "Opening..." : "Choose Starter"}
+                  buttonLabel={billingLoading === "starter" ? "Opening..." : "Start with Starter"}
                   onClick={() => startCheckout("starter")}
                 />
                 <PlanCard
@@ -237,7 +424,7 @@ export default function Dashboard() {
                     "Priority support",
                     "Up to 2,000 conversations/month",
                   ]}
-                  buttonLabel={billingLoading === "growth" ? "Opening..." : "Choose Growth"}
+                  buttonLabel={billingLoading === "growth" ? "Opening..." : "Upgrade to Growth"}
                   onClick={() => startCheckout("growth")}
                 />
                 <PlanCard
@@ -249,7 +436,7 @@ export default function Dashboard() {
                     "Higher limits",
                     "Premium onboarding",
                   ]}
-                  buttonLabel={billingLoading === "pro" ? "Opening..." : "Choose Pro"}
+                  buttonLabel={billingLoading === "pro" ? "Opening..." : "Go Pro"}
                   onClick={() => startCheckout("pro")}
                 />
               </div>
@@ -435,6 +622,7 @@ function PlanCard({
 }) {
   return (
     <div className={`plan-card ${featured ? "plan-featured" : ""}`}>
+      {featured && <div className="badge badge-growth">Most Popular</div>}
       <div className="plan-title">{title}</div>
       <div className="plan-price">{price}</div>
       <ul className="plan-features">
