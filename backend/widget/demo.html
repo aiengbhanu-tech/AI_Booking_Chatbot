@@ -159,19 +159,40 @@
     document.body.appendChild(script);
   }
 
-  setTimeout(() => {
-    const launcher =
+  function findLauncher() {
+    return (
       document.querySelector('[data-ai-widget-launcher]') ||
       document.querySelector('.ai-widget-launcher') ||
-      document.querySelector('button[aria-label*="chat" i]');
+      document.querySelector('button[aria-label*="chat" i]') ||
+      document.querySelector('button[aria-label*="assistant" i]') ||
+      document.querySelector('button[aria-label*="message" i]')
+    );
+  }
 
-    if (launcher) launcher.click();
-  }, 2000);
+  function autoOpenWidget() {
+    let tries = 0;
+    const maxTries = 30;
 
-  setTimeout(() => {
-    const prompt = document.getElementById("demo-prompt");
-    if (prompt) prompt.style.display = "none";
-  }, 6000);
+    const interval = setInterval(() => {
+      const launcher = findLauncher();
+      tries++;
+
+      if (launcher) {
+        launcher.click();
+
+        const prompt = document.getElementById("demo-prompt");
+        if (prompt) prompt.style.display = "none";
+
+        clearInterval(interval);
+      }
+
+      if (tries >= maxTries) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  }
+
+  setTimeout(autoOpenWidget, 1500);
 </script>
 
 </body>
