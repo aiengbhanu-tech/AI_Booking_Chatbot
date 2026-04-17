@@ -145,19 +145,18 @@
 
 <script>
   const params = new URLSearchParams(window.location.search);
-  const tenantKey = params.get("key");
+
+  // fallback demo key if ?key= is missing
+  const tenantKey =
+    params.get("key") || "pub_JHAsLnto12IE_S66uP_t3XrOt8ANHiun";
+
   const API_BASE = "https://aibookingchatbot-production.up.railway.app";
 
-  if (!tenantKey) {
-    console.error("Missing widget key in URL");
-    alert("Missing widget key. Open this demo from dashboard.");
-  } else {
-    const script = document.createElement("script");
-    script.src = `${API_BASE}/widget/widget.js`;
-    script.setAttribute("data-tenant-key", tenantKey);
-    script.setAttribute("data-api-base", API_BASE);
-    document.body.appendChild(script);
-  }
+  const script = document.createElement("script");
+  script.src = `${API_BASE}/widget/widget.js`;
+  script.setAttribute("data-tenant-key", tenantKey);
+  script.setAttribute("data-api-base", API_BASE);
+  document.body.appendChild(script);
 
   function findLauncher() {
     return (
