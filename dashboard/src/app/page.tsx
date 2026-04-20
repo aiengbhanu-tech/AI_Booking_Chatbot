@@ -969,15 +969,15 @@ export default function Dashboard() {
         }
 
         .billing-status-card {
-          background: rgba(10, 18, 34, 0.72);
-          border: 1px solid rgba(148, 163, 184, 0.15);
+          background: #f8fafc;
+          border: 1px solid rgba(15, 23, 42, 0.08);
           border-radius: 20px;
           padding: 18px;
         }
 
         .billing-value {
           margin-top: 8px;
-          color: #ffffff;
+          color: #0f172a;
           font-size: 18px;
           font-weight: 700;
           word-break: break-word;
@@ -1076,9 +1076,11 @@ export default function Dashboard() {
           display: flex;
           justify-content: space-between;
           gap: 12px;
-          align-items: flex-start;
-          padding: 14px 0;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+          align-items: center;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid rgba(15, 23, 42, 0.08);
         }
 
         .info-row:last-child {
@@ -1086,7 +1088,7 @@ export default function Dashboard() {
         }
 
         .info-label {
-          color: #94a3b8;
+          color: #475569;
           font-size: 12px;
           font-weight: 700;
           text-transform: uppercase;
@@ -1095,7 +1097,7 @@ export default function Dashboard() {
 
         .info-value {
           margin-top: 6px;
-          color: #ffffff;
+          color: #0f172a;
           line-height: 1.55;
           word-break: break-word;
         }
@@ -1103,7 +1105,7 @@ export default function Dashboard() {
         .code-box {
           background: #06101f;
           border: 1px solid rgba(96, 165, 250, 0.18);
-          color: #dbeafe;
+          color: #f8fafc;
           border-radius: 18px;
           padding: 16px;
           font-size: 13px;
