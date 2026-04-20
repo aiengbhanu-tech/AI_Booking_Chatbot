@@ -905,17 +905,81 @@ export default function Dashboard() {
           font-size: 13px;
         }
 
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 16px;
-        }
-
         .stat-card {
           border-radius: 24px;
           padding: 22px;
           position: relative;
           overflow: hidden;
+          background: #f8fafc;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .stat-label {
+          color: #475569;
+          font-size: 13px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .stat-value {
+          margin-top: 10px;
+          font-size: 34px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        .stat-helper {
+          margin-top: 8px;
+          color: #334155;
+          font-size: 14px;
+        }
+
+        .billing-status-card {
+          background: #f8fafc;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          border-radius: 20px;
+          padding: 18px;
+        }
+
+        .info-label {
+          color: #475569;
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .billing-value {
+          margin-top: 8px;
+          color: #0f172a;
+          font-size: 18px;
+          font-weight: 700;
+          word-break: break-word;
+        }
+
+        .info-value {
+          margin-top: 6px;
+          color: #0f172a;
+          line-height: 1.55;
+          word-break: break-word;
+        }
+
+        .info-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
         }
 
         .stat-card::after {
@@ -940,47 +1004,11 @@ export default function Dashboard() {
           background: #22c55e;
         }
 
-        .stat-label {
-          color: #94a3b8;
-          font-size: 13px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
-
-        .stat-value {
-          margin-top: 10px;
-          font-size: 34px;
-          font-weight: 800;
-          color: #ffffff;
-        }
-
-        .stat-helper {
-          margin-top: 8px;
-          color: #b8c7de;
-          font-size: 14px;
-        }
-
         .billing-top {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
           margin-bottom: 18px;
-        }
-
-        .billing-status-card {
-          background: #f8fafc;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 20px;
-          padding: 18px;
-        }
-
-        .billing-value {
-          margin-top: 8px;
-          color: #0f172a;
-          font-size: 18px;
-          font-weight: 700;
-          word-break: break-word;
         }
 
         .status-pill {
@@ -1072,34 +1100,8 @@ export default function Dashboard() {
           gap: 14px;
         }
 
-        .info-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: center;
-          padding: 14px 16px;
-          border-radius: 16px;
-          background: #f8fafc;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-        }
-
         .info-row:last-child {
           border-bottom: none;
-        }
-
-        .info-label {
-          color: #475569;
-          font-size: 12px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
-
-        .info-value {
-          margin-top: 6px;
-          color: #0f172a;
-          line-height: 1.55;
-          word-break: break-word;
         }
 
         .code-box {
