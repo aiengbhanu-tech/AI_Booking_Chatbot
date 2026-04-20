@@ -1011,6 +1011,27 @@ export default function Dashboard() {
           margin-bottom: 18px;
         }
 
+        .status-active {
+          background: rgba(34, 197, 94, 0.14);
+          color: #166534;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .status-inactive,
+        .status-cancelled,
+        .status-past_due,
+        .status-unpaid {
+          background: rgba(239, 68, 68, 0.14);
+          color: #991b1b;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-trialing {
+          background: rgba(59, 130, 246, 0.14);
+          color: #1d4ed8;
+          border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
         .status-pill {
           display: inline-flex;
           margin-top: 8px;
@@ -1020,27 +1041,6 @@ export default function Dashboard() {
           font-weight: 700;
           text-transform: capitalize;
           width: fit-content;
-        }
-
-        .status-active {
-          background: rgba(34, 197, 94, 0.14);
-          color: #bbf7d0;
-          border: 1px solid rgba(34, 197, 94, 0.3);
-        }
-
-        .status-inactive,
-        .status-cancelled,
-        .status-past_due,
-        .status-unpaid {
-          background: rgba(239, 68, 68, 0.14);
-          color: #fecaca;
-          border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-
-        .status-trialing {
-          background: rgba(59, 130, 246, 0.14);
-          color: #bfdbfe;
-          border: 1px solid rgba(59, 130, 246, 0.3);
         }
 
         .billing-note {
