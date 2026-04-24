@@ -187,6 +187,44 @@ export default function Dashboard() {
     }
   }
 
+  async function openBillingPortal() {
+    try {
+      clearMessages();
+
+      if (!apiKey.trim()) {
+        showError("Please load your dashboard first.");
+        return;
+      }
+
+      setBillingLoading("portal");
+
+      const res = await fetch(`${API_BASE}/v1/billing/portal`, {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey.trim(),
+        },
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Billing portal failed");
+      }
+
+      const json = await res.json();
+
+      if (json.portal_url) {
+        window.open(json.portal_url, "_blank", "noopener,noreferrer");
+      } else {
+        showError("No billing portal URL returned.");
+      }
+    } catch (err) {
+      console.error("Billing portal error:", err);
+      showError("Could not open billing portal.");
+    } finally {
+      setBillingLoading(null);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("api_key");
     localStorage.removeItem("widget_key");
@@ -427,6 +465,9 @@ export default function Dashboard() {
                   <p className="panel-subtitle">
                     Manage the current plan and upgrade this clinic account.
                   </p>
+                  <button className="ghost-btn" onClick={openBillingPortal}>
+                    {billingLoading === "portal" ? "Opening..." : "Manage Billing"}
+                  </button>
                 </div>
               </div>
 
