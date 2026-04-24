@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.tenants.models import Tenant
-from app.core.security import get_tenant_from_api_key
+from app.tenants.routes import get_current_tenant
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
 
@@ -22,7 +22,7 @@ PRICE_MAP = {
 def create_checkout_session(
     plan: str,
     db: Session = Depends(get_db),
-    tenant: Tenant = Depends(get_tenant_from_api_key),
+    tenant: Tenant = Depends(get_current_tenant),
 ):
     if plan not in PRICE_MAP or not PRICE_MAP[plan]:
         raise HTTPException(status_code=400, detail="Invalid or missing Stripe price for plan")
@@ -74,7 +74,7 @@ def create_checkout_session(
 
 @router.post("/portal")
 def create_customer_portal(
-    tenant: Tenant = Depends(get_tenant_from_api_key),
+    tenant: Tenant = Depends(get_current_tenant),
 ):
     if not tenant.stripe_customer_id:
         raise HTTPException(status_code=400, detail="Stripe customer not found")
