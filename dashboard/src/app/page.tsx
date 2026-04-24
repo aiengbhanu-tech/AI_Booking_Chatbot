@@ -904,18 +904,18 @@ export default function Dashboard() {
           border-radius: 12px;
           font-size: 13px;
         }
-
+        
         .stat-card {
           border-radius: 24px;
           padding: 22px;
           position: relative;
           overflow: hidden;
-          background: #f8fafc;
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: #f8fafc !important;
+          border: 1px solid rgba(15, 23, 42, 0.08) !important;
         }
 
         .stat-label {
-          color: #475569;
+          color: #475569 !important;
           font-size: 13px;
           font-weight: 700;
           text-transform: uppercase;
@@ -926,24 +926,24 @@ export default function Dashboard() {
           margin-top: 10px;
           font-size: 34px;
           font-weight: 800;
-          color: #0f172a;
+          color: #0f172a !important;
         }
 
         .stat-helper {
           margin-top: 8px;
-          color: #334155;
+          color: #334155 !important;
           font-size: 14px;
         }
 
         .billing-status-card {
-          background: #f8fafc;
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: #f8fafc !important;
+          border: 1px solid rgba(15, 23, 42, 0.08) !important;
           border-radius: 20px;
           padding: 18px;
         }
 
         .info-label {
-          color: #475569;
+          color: #475569 !important;
           font-size: 12px;
           font-weight: 700;
           text-transform: uppercase;
@@ -952,7 +952,7 @@ export default function Dashboard() {
 
         .billing-value {
           margin-top: 8px;
-          color: #0f172a;
+          color: #0f172a !important;
           font-size: 18px;
           font-weight: 700;
           word-break: break-word;
@@ -960,7 +960,7 @@ export default function Dashboard() {
 
         .info-value {
           margin-top: 6px;
-          color: #0f172a;
+          color: #0f172a !important;
           line-height: 1.55;
           word-break: break-word;
         }
@@ -972,8 +972,55 @@ export default function Dashboard() {
           align-items: flex-start;
           padding: 14px 16px;
           border-radius: 16px;
-          background: #f8fafc;
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: #f8fafc !important;
+          border: 1px solid rgba(15, 23, 42, 0.08) !important;
+        }
+
+        .plan-card {
+          border-radius: 24px;
+          padding: 22px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          position: relative;
+          background: #f8fafc !important;
+          border: 1px solid rgba(15, 23, 42, 0.08) !important;
+        }
+
+        .plan-title {
+          font-size: 22px;
+          font-weight: 800;
+          color: #0f172a !important;
+        }
+
+        .plan-price {
+          font-size: 30px;
+          font-weight: 900;
+          color: #0f172a !important;
+        }
+
+        .plan-features {
+          margin: 0;
+          padding-left: 18px;
+          color: #334155 !important;
+          display: grid;
+          gap: 8px;
+          line-height: 1.5;
+          flex: 1;
+        }
+
+        .plan-features li {
+          color: #334155 !important;
+        }
+
+        .plan-card .ghost-btn {
+          background: #e2e8f0 !important;
+          color: #0f172a !important;
+          border: 1px solid rgba(15, 23, 42, 0.1) !important;
+        }
+
+        .plan-card .primary-btn {
+          color: #ffffff !important;
         }
 
         .stats-grid {
@@ -1053,40 +1100,16 @@ export default function Dashboard() {
           gap: 16px;
         }
 
-        .plan-card {
-          border-radius: 24px;
-          padding: 22px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          position: relative;
-        }
-
         .plan-featured {
           border: 1px solid rgba(96, 165, 250, 0.45);
           box-shadow: 0 14px 36px rgba(59, 130, 246, 0.18);
         }
 
-        .plan-title {
-          font-size: 22px;
-          font-weight: 800;
-          color: #ffffff;
-        }
-
-        .plan-price {
-          font-size: 30px;
-          font-weight: 900;
-          color: #dbeafe;
-        }
-
-        .plan-features {
-          margin: 0;
-          padding-left: 18px;
-          color: #cbd5e1;
-          display: grid;
-          gap: 8px;
-          line-height: 1.5;
-          flex: 1;
+        .stat-card *,
+        .billing-status-card *,
+        .info-row *,
+        .plan-card * {
+          color: inherit;
         }
 
         .grid.two-col {
