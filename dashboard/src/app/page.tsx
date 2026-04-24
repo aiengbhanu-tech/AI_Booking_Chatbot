@@ -1261,6 +1261,32 @@ export default function Dashboard() {
           line-height: 1.6;
         }
 
+        .stat-card .stat-label,
+        .stat-card .stat-value,
+        .stat-card .stat-helper,
+        .billing-status-card .info-label,
+        .billing-status-card .billing-value,
+        .info-row .info-label,
+        .info-row .info-value,
+        .plan-card .plan-title,
+        .plan-card .plan-price,
+        .plan-card .plan-features,
+        .plan-card .plan-features li {
+          color: #0f172a !important;
+        }
+
+        .stat-card .stat-label,
+        .billing-status-card .info-label,
+        .info-row .info-label {
+          color: #475569 !important;
+        }
+
+        .stat-card .stat-helper,
+        .plan-card .plan-features,
+        .plan-card .plan-features li {
+          color: #334155 !important;
+        }
+
         @media (max-width: 1100px) {
           .hero,
           .billing-top,
