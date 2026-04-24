@@ -602,7 +602,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <style jsx>{`
+      <style jsx global>{`
         :global(body) {
           margin: 0;
           background:
