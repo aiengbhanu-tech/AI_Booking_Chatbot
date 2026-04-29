@@ -7,7 +7,7 @@ from app.core.db import get_db
 from app.tenants.models import Tenant
 from app.tenants.routes import get_current_tenant
 
-router = APIRouter(prefix="/v1/billing", tags=["billing"])
+router = APIRouter()
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
