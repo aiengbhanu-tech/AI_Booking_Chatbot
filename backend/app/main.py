@@ -15,6 +15,7 @@ from app.leads.routes import router as leads_router
 from app.analytics.routes import router as analytics_router
 from app.widget.routes import router as widget_router
 from app.billing.routes import router as billing_router
+from app.outreach.routes import router as outreach_router
 
 
 # ✅ Define lifespan FIRST
@@ -54,7 +55,7 @@ app.include_router(leads_router, prefix="/v1/leads", tags=["leads"])
 app.include_router(analytics_router, prefix="/v1/analytics", tags=["analytics"])
 app.include_router(widget_router, prefix="/v1/widget", tags=["widget"])
 app.include_router(billing_router, prefix="/v1/billing", tags=["billing"])
-
+app.include_router(outreach_router, prefix="/v1/outreach", tags=["outreach"])
 # ✅ Safe static mount
 if WIDGET_DIR.exists():
     app.mount("/widget", StaticFiles(directory=str(WIDGET_DIR)), name="widget")

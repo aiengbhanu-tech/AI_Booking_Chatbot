@@ -21,3 +21,6 @@ sentence-transformers
 
 stripe
 pydantic[email]
+
+requests
+beautifulsoup4
