@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+import csv
+import io
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -45,3 +47,57 @@ def analyze_prospect(payload: AnalyzeWebsiteRequest, db: Session = Depends(get_d
 @router.get("/prospects", response_model=list[ProspectOut])
 def list_prospects(db: Session = Depends(get_db)):
     return db.query(Prospect).order_by(Prospect.id.desc()).limit(100).all()
+
+@router.post("/import-csv")
+def import_prospects_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+
+    content = file.file.read().decode("utf-8")
+    reader = csv.DictReader(io.StringIO(content))
+
+    created = []
+
+    for row in reader:
+        website = row.get("website")
+
+        if not website:
+            continue
+
+        if not website.startswith("http"):
+            website = "https://" + website
+
+        findings = analyze_website(website)
+        pitch = generate_simple_pitch(website, findings)
+        audit_summary = "\n".join(findings.get("reasons", []))
+
+        prospect = Prospect(
+            clinic_name=row.get("clinic_name") or findings.get("clinic_name"),
+            website=website,
+            email=row.get("email"),
+            phone=row.get("phone"),
+            country=row.get("country"),
+            city=row.get("city"),
+            has_chatbot=findings.get("has_chatbot", "unknown"),
+            has_booking=findings.get("has_booking", "unknown"),
+            has_contact_form=findings.get("has_contact_form", "unknown"),
+            has_faq=findings.get("has_faq", "unknown"),
+            score=findings.get("score", 0),
+            status="new",
+            audit_summary=audit_summary,
+            pitch=pitch,
+            raw_findings=findings,
+        )
+
+        db.add(prospect)
+        created.append(prospect)
+
+    db.commit()
+
+    return {
+        "message": "CSV imported successfully",
+        "count": len(created)
+    }
