@@ -7,7 +7,7 @@ from app.outreach.schemas import AnalyzeWebsiteRequest, ProspectOut
 from app.outreach.website_analyzer import analyze_website
 from app.outreach.pitch_generator import generate_simple_pitch
 
-router = APIRouter(prefix="/v1/outreach", tags=["Outreach"])
+router = APIRouter()
 
 
 @router.post("/analyze", response_model=ProspectOut)
