@@ -2,6 +2,7 @@ import csv
 import io
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.core.db import get_db
 from app.outreach.models import Prospect
@@ -101,3 +102,23 @@ def import_prospects_csv(
         "message": "CSV imported successfully",
         "count": len(created)
     }
+    
+@router.get("/prospects/filter", response_model=list[ProspectOut])
+def filter_prospects(
+    min_score: Optional[int] = None,
+    status: Optional[str] = None,
+    country: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Prospect)
+
+    if min_score is not None:
+        query = query.filter(Prospect.score >= min_score)
+
+    if status:
+        query = query.filter(Prospect.status == status)
+
+    if country:
+        query = query.filter(Prospect.country == country)
+
+    return query.order_by(Prospect.score.desc()).limit(200).all()
