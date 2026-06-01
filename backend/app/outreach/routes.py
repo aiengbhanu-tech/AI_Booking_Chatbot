@@ -3,12 +3,16 @@ import io
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel
 
 from app.core.db import get_db
 from app.outreach.models import Prospect
 from app.outreach.schemas import AnalyzeWebsiteRequest, ProspectOut
 from app.outreach.website_analyzer import analyze_website
 from app.outreach.pitch_generator import generate_simple_pitch
+
+class UpdateStatusRequest(BaseModel):
+    status: str
 
 router = APIRouter()
 
@@ -122,3 +126,36 @@ def filter_prospects(
         query = query.filter(Prospect.country == country)
 
     return query.order_by(Prospect.score.desc()).limit(200).all()
+
+
+@router.patch("/prospects/{prospect_id}/status", response_model=ProspectOut)
+def update_prospect_status(
+    prospect_id: int,
+    payload: UpdateStatusRequest,
+    db: Session = Depends(get_db)
+):
+    allowed_statuses = [
+        "new",
+        "contacted",
+        "replied",
+        "demo_booked",
+        "closed",
+        "lost"
+    ]
+
+    if payload.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Use one of: {allowed_statuses}"
+        )
+
+    prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    prospect.status = payload.status
+    db.commit()
+    db.refresh(prospect)
+
+    return prospect
