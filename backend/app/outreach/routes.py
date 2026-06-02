@@ -10,6 +10,7 @@ from app.outreach.models import Prospect
 from app.outreach.schemas import AnalyzeWebsiteRequest, ProspectOut
 from app.outreach.website_analyzer import analyze_website
 from app.outreach.pitch_generator import generate_simple_pitch
+from app.outreach.email_generator import generate_email_variants
 
 class UpdateStatusRequest(BaseModel):
     status: str
@@ -52,6 +53,7 @@ def analyze_prospect(payload: AnalyzeWebsiteRequest, db: Session = Depends(get_d
 @router.get("/prospects", response_model=list[ProspectOut])
 def list_prospects(db: Session = Depends(get_db)):
     return db.query(Prospect).order_by(Prospect.id.desc()).limit(100).all()
+
 
 @router.post("/import-csv")
 def import_prospects_csv(
@@ -106,6 +108,7 @@ def import_prospects_csv(
         "message": "CSV imported successfully",
         "count": len(created)
     }
+
     
 @router.get("/prospects/filter", response_model=list[ProspectOut])
 def filter_prospects(
@@ -160,6 +163,7 @@ def update_prospect_status(
 
     return prospect
 
+
 @router.get("/prospects/{prospect_id}", response_model=ProspectOut)
 def get_prospect(
     prospect_id: int,
@@ -171,6 +175,7 @@ def get_prospect(
         raise HTTPException(status_code=404, detail="Prospect not found")
 
     return prospect
+
 
 @router.delete("/prospects/{prospect_id}")
 def delete_prospect(
@@ -189,3 +194,31 @@ def delete_prospect(
         "message": "Prospect deleted successfully",
         "id": prospect_id
     }
+    
+
+@router.post("/prospects/{prospect_id}/generate-email")
+def generate_outreach_email(
+    prospect_id: int,
+    db: Session = Depends(get_db)
+):
+    prospect = (
+        db.query(Prospect)
+        .filter(Prospect.id == prospect_id)
+        .first()
+    )
+
+    if not prospect:
+        raise HTTPException(
+            status_code=404,
+            detail="Prospect not found"
+        )
+
+    variants = generate_email_variants(prospect)
+
+    prospect.email_variant_1 = variants["email_1"]
+    prospect.email_variant_2 = variants["email_2"]
+    prospect.dm_variant = variants["dm"]
+
+    db.commit()
+
+    return variants

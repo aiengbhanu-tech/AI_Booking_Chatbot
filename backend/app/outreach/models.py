@@ -25,5 +25,9 @@ class Prospect(Base):
     audit_summary = Column(Text, nullable=True)
     pitch = Column(Text, nullable=True)
     raw_findings = Column(JSON, nullable=True)
+    
+    email_variant_1 = Column(Text, nullable=True)
+    email_variant_2 = Column(Text, nullable=True)
+    dm_variant = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
