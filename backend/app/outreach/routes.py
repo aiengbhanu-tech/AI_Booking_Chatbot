@@ -159,3 +159,33 @@ def update_prospect_status(
     db.refresh(prospect)
 
     return prospect
+
+@router.get("/prospects/{prospect_id}", response_model=ProspectOut)
+def get_prospect(
+    prospect_id: int,
+    db: Session = Depends(get_db)
+):
+    prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    return prospect
+
+@router.delete("/prospects/{prospect_id}")
+def delete_prospect(
+    prospect_id: int,
+    db: Session = Depends(get_db)
+):
+    prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    db.delete(prospect)
+    db.commit()
+
+    return {
+        "message": "Prospect deleted successfully",
+        "id": prospect_id
+    }
