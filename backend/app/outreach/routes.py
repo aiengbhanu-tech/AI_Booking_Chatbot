@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
+from sqlalchemy import func
 
 from app.core.db import get_db
 from app.outreach.models import Prospect
@@ -11,9 +12,17 @@ from app.outreach.schemas import AnalyzeWebsiteRequest, ProspectOut
 from app.outreach.website_analyzer import analyze_website
 from app.outreach.pitch_generator import generate_simple_pitch
 from app.outreach.email_generator import generate_email_variants
+from app.outreach.gpt_personalizer import generate_personalized_outreach
+
 
 class UpdateStatusRequest(BaseModel):
     status: str
+
+class AssignCampaignRequest(BaseModel):
+    campaign_name: str
+
+class AssignCampaignRequest(BaseModel):
+    campaign_name: str
 
 router = APIRouter()
 
@@ -222,3 +231,59 @@ def generate_outreach_email(
     db.commit()
 
     return variants
+
+
+@router.get("/stats")
+def outreach_stats(db: Session = Depends(get_db)):
+    total = db.query(Prospect).count()
+
+    by_status = (
+        db.query(Prospect.status, func.count(Prospect.id))
+        .group_by(Prospect.status)
+        .all()
+    )
+
+    high_score = db.query(Prospect).filter(Prospect.score >= 80).count()
+    due_followups = db.query(Prospect).filter(
+        Prospect.next_followup_at != None
+    ).count()
+
+    return {
+        "total_prospects": total,
+        "high_score_prospects": high_score,
+        "due_followups": due_followups,
+        "status_counts": {
+            status: count for status, count in by_status
+        }
+    }
+
+    
+@router.post("/prospects/{prospect_id}/personalize")
+def personalize_outreach(
+    prospect_id: int,
+    db: Session = Depends(get_db)
+):
+    prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    return generate_personalized_outreach(prospect)
+
+
+@router.patch("/prospects/{prospect_id}/campaign", response_model=ProspectOut)
+def assign_campaign(
+    prospect_id: int,
+    payload: AssignCampaignRequest,
+    db: Session = Depends(get_db)
+):
+    prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+
+    prospect.campaign_name = payload.campaign_name
+    db.commit()
+    db.refresh(prospect)
+
+    return prospect

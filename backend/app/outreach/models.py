@@ -29,5 +29,12 @@ class Prospect(Base):
     email_variant_1 = Column(Text, nullable=True)
     email_variant_2 = Column(Text, nullable=True)
     dm_variant = Column(Text, nullable=True)
+    
+    notes = Column(Text, nullable=True)
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True)
+    next_followup_at = Column(DateTime(timezone=True), nullable=True)
+
+    audit_report = Column(Text, nullable=True)
+    campaign_name = Column(String(255), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
