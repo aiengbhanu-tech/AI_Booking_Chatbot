@@ -8,6 +8,7 @@ from app.core.db import get_db
 from app.tenants.models import Tenant
 from app.rag.chat_service import run_chat, stream_chat
 from app.leads.models import Lead
+from app.voice.service import get_voice_settings, schedule_callback
 
 router = APIRouter()
 
@@ -50,6 +51,7 @@ def get_tenant_by_widget_key(widget_key: str, db: Session) -> Tenant:
 @router.get("/config")
 def widget_config(widget_key: str, db: Session = Depends(get_db)):
     tenant = get_tenant_by_widget_key(widget_key, db)
+    vs = get_voice_settings(db, tenant.id)
 
     return {
         "tenant_name": tenant.name,
@@ -57,6 +59,8 @@ def widget_config(widget_key: str, db: Session = Depends(get_db)):
         "calendly_url": tenant.calendly_url,
         "primary_color": "#2563eb",
         "position": "right",
+        # Voice agent inside the widget (off unless enabled in the dashboard)
+        "voice_enabled": bool(vs and vs.web_voice_enabled),
     }
 
 
@@ -120,6 +124,19 @@ def widget_create_lead(payload: LeadRequest, db: Session = Depends(get_db)):
     db.add(lead)
     db.commit()
     db.refresh(lead)
+
+    # Optional: have the AI phone agent call this visitor back right away.
+    if payload.intent == "callback" and payload.phone:
+        try:
+            vs = get_voice_settings(db, tenant.id)
+            if vs and vs.auto_callback_web_leads:
+                schedule_callback(
+                    db, vs, payload.phone, "web_lead",
+                    name=payload.name, context=payload.notes, lead_id=lead.id, delay_seconds=30,
+                )
+        except Exception as e:  # never let voice issues break lead capture
+            db.rollback()
+            print("[WIDGET AUTO-CALLBACK ERROR]", repr(e))
 
     return {
         "ok": True,

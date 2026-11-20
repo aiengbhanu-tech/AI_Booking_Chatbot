@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import VoicePanel from "@/components/VoicePanel";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
@@ -311,7 +312,7 @@ export default function Dashboard() {
             <div className="eyebrow">AI Receptionist SaaS</div>
             <h1 className="title">Client Dashboard</h1>
             <p className="subtitle">
-              Monitor leads, conversations, billing, and widget setup for your clinic.
+              Monitor leads, chats, phone calls, billing, and widget setup for your clinic.
             </p>
             <p className="subtitle secondary-subtitle">
               Convert website visitors into leads and bookings automatically, 24/7.
@@ -457,6 +458,8 @@ export default function Dashboard() {
                 helper="All chatbot conversations"
               />
             </section>
+
+            <VoicePanel apiBase={API_BASE} apiKey={apiKey} />
 
             <section className="panel">
               <div className="panel-header">

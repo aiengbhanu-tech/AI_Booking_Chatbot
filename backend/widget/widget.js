@@ -54,9 +54,17 @@
 
       <div class="ai-form-wrap" style="display:none;"></div>
 
+      <div class="ai-voice-bar" style="display:none;">
+        <span class="ai-voice-dot"></span>
+        <span class="ai-voice-state">Connecting…</span>
+        <span class="ai-voice-timer"></span>
+        <button class="ai-voice-end" type="button">End voice</button>
+      </div>
+
       <div class="ai-input-wrap">
         <div class="ai-input">
           <input placeholder="Ask a question..." />
+          <button class="ai-voice-btn" type="button" aria-label="Talk to the assistant" title="Talk to the assistant" style="display:none;">🎤</button>
           <button class="ai-send-btn">Send</button>
         </div>
         <div class="ai-footer-note">Powered by your website AI assistant</div>
@@ -76,6 +84,11 @@
   const send = root.querySelector(".ai-send-btn");
   const quick = root.querySelector(".ai-quick");
   const formWrap = root.querySelector(".ai-form-wrap");
+  const voiceBtn = root.querySelector(".ai-voice-btn");
+  const voiceBar = root.querySelector(".ai-voice-bar");
+  const voiceStateEl = root.querySelector(".ai-voice-state");
+  const voiceTimerEl = root.querySelector(".ai-voice-timer");
+  const voiceEndBtn = root.querySelector(".ai-voice-end");
 
   let sessionId = "sess_" + Date.now();
   let currentIntent = "inquiry";
@@ -99,6 +112,7 @@
 
   close.addEventListener("click", () => {
     panel.classList.remove("open");
+    if (voice) endVoice("closed");
   });
 
   function setStatus(text) {
@@ -336,6 +350,10 @@
       tenantConfig = cfg;
       titleEl.textContent = cfg.tenant_name || "Assistant";
 
+      if (cfg.voice_enabled && window.RTCPeerConnection && navigator.mediaDevices) {
+        voiceBtn.style.display = "";
+      }
+
       addMessage(
         cfg.welcome_message || "Hi! How can I help you today?",
         "bot"
@@ -562,6 +580,204 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
   }
+
+
+  // -------------------------------------------------------------------
+  // Voice mode: browser <-> OpenAI Realtime over WebRTC.
+  // The backend creates the session (API key never reaches the browser)
+  // and executes tools (knowledge search, leads, appointment requests).
+  // -------------------------------------------------------------------
+  let voice = null;
+
+  function setVoiceState(text, speaking) {
+    voiceStateEl.textContent = text;
+    voiceBar.classList.toggle("speaking", !!speaking);
+  }
+
+  function voiceSend(evt) {
+    if (voice && voice.dc && voice.dc.readyState === "open") {
+      voice.dc.send(JSON.stringify(evt));
+    }
+  }
+
+  async function startVoice() {
+    if (voice) return;
+    voiceBtn.disabled = true;
+    voiceBar.style.display = "flex";
+    setVoiceState("Connecting…");
+
+    const v = { transcript: [], started: Date.now(), pc: null, dc: null, stream: null, audio: null, info: null, timer: null, busyTools: 0 };
+    voice = v;
+
+    try {
+      v.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      if (voice !== v) { v.stream.getTracks().forEach((t) => t.stop()); return; }
+      v.pc = new RTCPeerConnection();
+      v.audio = document.createElement("audio");
+      v.audio.autoplay = true;
+      v.audio.setAttribute("playsinline", "");
+      v.pc.ontrack = (e) => { v.audio.srcObject = e.streams[0]; };
+      v.stream.getTracks().forEach((t) => v.pc.addTrack(t, v.stream));
+
+      v.dc = v.pc.createDataChannel("oai-events");
+      v.dc.onmessage = (e) => {
+        try { onVoiceEvent(JSON.parse(e.data)); } catch (err) { console.error(err); }
+      };
+      v.dc.onopen = () => {
+        setVoiceState("Listening…");
+        voiceSend({ type: "response.create", response: { instructions: v.info.greeting } });
+      };
+      v.pc.onconnectionstatechange = () => {
+        if (voice === v && ["failed", "disconnected"].includes(v.pc.connectionState)) {
+          addMessage("Voice connection lost.", "bot", { small: true });
+          endVoice("connection_lost");
+        }
+      };
+
+      const offer = await v.pc.createOffer();
+      await v.pc.setLocalDescription(offer);
+
+      const res = await fetch(`${apiBase}/v1/voice/web/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widget_key: tenantKey, session_id: sessionId, sdp: offer.sdp })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Voice unavailable");
+      v.info = data;
+      if (voice !== v) { endSession(v); return; } // user cancelled while connecting
+      await v.pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+
+      const maxMs = (data.max_seconds || 600) * 1000;
+      v.timer = setInterval(() => {
+        const ms = Date.now() - v.started;
+        const sec = Math.floor(ms / 1000);
+        voiceTimerEl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+        if (ms >= maxMs) {
+          addMessage("Voice session time limit reached.", "bot", { small: true });
+          endVoice("time_limit");
+        }
+      }, 1000);
+      voiceBtn.classList.add("active");
+    } catch (err) {
+      console.error("Voice start error:", err);
+      const denied = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      addMessage(
+        denied
+          ? "Microphone access was blocked. You can keep chatting by text."
+          : "Voice isn't available right now. You can keep chatting by text.",
+        "bot",
+        { small: true }
+      );
+      endVoice("start_failed");
+    } finally {
+      voiceBtn.disabled = false;
+    }
+  }
+
+  async function onVoiceEvent(e) {
+    const v = voice;
+    if (!v) return;
+
+    if (e.type === "input_audio_buffer.speech_started") setVoiceState("Listening…");
+    if (e.type === "response.created") setVoiceState("Speaking…", true);
+
+    if (e.type === "conversation.item.input_audio_transcription.completed" && e.transcript && e.transcript.trim()) {
+      v.transcript.push({ role: "user", text: e.transcript.trim() });
+      addMessage(e.transcript.trim(), "user");
+    }
+
+    if (e.type === "response.output_audio_transcript.done" && e.transcript && e.transcript.trim()) {
+      v.transcript.push({ role: "assistant", text: e.transcript.trim() });
+      addMessage(e.transcript.trim(), "bot");
+    }
+
+    if (e.type === "error") console.warn("Realtime error", e.error);
+
+    if (e.type === "response.done") {
+      const calls = ((e.response && e.response.output) || []).filter((o) => o.type === "function_call");
+      if (!calls.length) {
+        if (!v.busyTools) setVoiceState("Listening…");
+        return;
+      }
+      v.busyTools++;
+      setVoiceState("Working on it…");
+      for (const fc of calls) {
+        let args = {};
+        try { args = JSON.parse(fc.arguments || "{}"); } catch (_) {}
+        let result;
+        try {
+          const r = await fetch(`${apiBase}/v1/voice/web/tool`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              widget_key: tenantKey,
+              voice_call_id: v.info.voice_call_id,
+              token: v.info.token,
+              name: fc.name,
+              arguments: args
+            })
+          });
+          const d = await r.json();
+          result = r.ok ? d.result : { ok: false, error: d.detail || "Action failed" };
+          if (r.ok && result && result.ok &&
+              ["create_lead", "request_appointment", "request_callback"].includes(fc.name)) {
+            leadSubmitted = true;
+          }
+          if (r.ok && d.actions && d.actions.length) handleActions(d.actions, "");
+        } catch (err) {
+          result = { ok: false, error: "Action failed. Offer to take details another way." };
+        }
+        if (voice !== v) return;
+        voiceSend({
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: fc.call_id, output: JSON.stringify(result) }
+        });
+      }
+      v.busyTools--;
+      voiceSend({ type: "response.create" });
+    }
+  }
+
+  function endSession(v) {
+    clearInterval(v.timer);
+    try { v.dc && v.dc.close(); } catch (_) {}
+    try { v.pc && v.pc.close(); } catch (_) {}
+    try { v.stream && v.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    if (v.audio) v.audio.srcObject = null;
+    if (v.info && !v.reported) {
+      v.reported = true;
+      fetch(`${apiBase}/v1/voice/web/end`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          widget_key: tenantKey,
+          voice_call_id: v.info.voice_call_id,
+          token: v.info.token,
+          duration_seconds: Math.round((Date.now() - v.started) / 1000),
+          transcript: v.transcript.slice(-200)
+        })
+      }).catch(() => {});
+    }
+  }
+
+  function endVoice(reason) {
+    const v = voice;
+    if (!v) return;
+    voice = null;
+    endSession(v);
+    voiceBar.style.display = "none";
+    voiceBar.classList.remove("speaking");
+    voiceTimerEl.textContent = "";
+    voiceBtn.classList.remove("active");
+  }
+
+  voiceBtn.onclick = () => (voice ? endVoice("user") : startVoice());
+  voiceEndBtn.onclick = () => endVoice("user");
+  window.addEventListener("pagehide", () => endVoice("pagehide"));
 
   send.onclick = () => sendMessage();
 

@@ -47,6 +47,24 @@ class Settings(BaseSettings):
     STRIPE_PRICE_GROWTH: str | None = None
     STRIPE_PRICE_PRO: str | None = None
 
+    # Voice agent (merged from relay-voice)
+    # Public HTTPS base URL of THIS backend, as Twilio sees it (e.g. https://api.example.com).
+    # Used to build webhook / media-stream URLs and to validate Twilio signatures.
+    PUBLIC_BASE_URL: str | None = None
+    REALTIME_MODEL: str = "gpt-realtime-2.1"
+    REALTIME_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
+    REALTIME_VOICE: str = "marin"
+    VOICE_TOKEN_SECRET: str | None = None  # falls back to API_KEY_SALT
+    VOICE_MAX_WEB_SESSION_SECONDS: int = 600
+    VOICE_MAX_PHONE_CALL_SECONDS: int = 1200
+    VOICE_CALLBACK_WORKER_ENABLED: bool = True
+    VOICE_CALLBACK_POLL_SECONDS: int = 15
+
+    # Twilio (phone calls, missed-call callbacks, SMS booking links)
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_VALIDATE_SIGNATURES: bool = True
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def parse_allowed_origins(cls, v):

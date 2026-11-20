@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,8 @@ from app.analytics.routes import router as analytics_router
 from app.widget.routes import router as widget_router
 from app.billing.routes import router as billing_router
 from app.outreach.routes import router as outreach_router
+from app.voice.routes import router as voice_router
+from app.voice.worker import callback_loop
 
 
 # ✅ Define lifespan FIRST
@@ -28,9 +31,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print("❌ DB connection failed:", e)
 
+    # Voice: background loop that places missed-call / requested AI callbacks
+    stop = asyncio.Event()
+    worker = None
+    if settings.VOICE_CALLBACK_WORKER_ENABLED:
+        worker = asyncio.create_task(callback_loop(stop))
+
     yield
 
     # Shutdown
+    stop.set()
+    if worker:
+        try:
+            await asyncio.wait_for(worker, timeout=5)
+        except Exception:
+            worker.cancel()
     print("🛑 App shutting down")
 
 
@@ -56,6 +71,7 @@ app.include_router(analytics_router, prefix="/v1/analytics", tags=["analytics"])
 app.include_router(widget_router, prefix="/v1/widget", tags=["widget"])
 app.include_router(billing_router, prefix="/v1/billing", tags=["billing"])
 app.include_router(outreach_router, prefix="/v1/outreach", tags=["outreach"])
+app.include_router(voice_router, prefix="/v1/voice", tags=["voice"])
 # ✅ Safe static mount
 if WIDGET_DIR.exists():
     app.mount("/widget", StaticFiles(directory=str(WIDGET_DIR)), name="widget")
