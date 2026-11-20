@@ -490,3 +490,79 @@
     max-height: 280px;
   }
 }
+/* ---------- Voice mode ---------- */
+.ai-voice-btn {
+  min-width: 46px;
+  border: 1px solid var(--ai-border);
+  border-radius: 14px;
+  background: var(--ai-primary-soft);
+  color: var(--ai-primary-dark);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.ai-voice-btn.active {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.ai-voice-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ai-voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--ai-border);
+  background: var(--ai-primary-soft);
+  font-size: 13px;
+  color: var(--ai-primary-dark);
+}
+
+.ai-voice-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #22c55e;
+  animation: ai-voice-pulse 1.6s infinite;
+  flex-shrink: 0;
+}
+
+.ai-voice-bar.speaking .ai-voice-dot {
+  background: var(--ai-primary);
+  animation-duration: 0.8s;
+}
+
+.ai-voice-state {
+  font-weight: 600;
+}
+
+.ai-voice-timer {
+  color: var(--ai-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-voice-end {
+  margin-left: auto;
+  border: none;
+  border-radius: 10px;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+@keyframes ai-voice-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-voice-dot { animation: none; }
+}
