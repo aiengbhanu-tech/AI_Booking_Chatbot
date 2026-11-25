@@ -26,3 +26,5 @@ requests
 beautifulsoup4
 websockets>=13.0
 tzdata
+
+email-validator

@@ -150,7 +150,9 @@
   const tenantKey =
     params.get("key") || "pub_JHAsLnto12IE_S66uP_t3XrOt8ANHiun";
 
-  const API_BASE = "https://aibookingchatbot-production.up.railway.app";
+  // Use the backend that served this page (localhost in dev, Railway in prod).
+  // Optional override: demo.html?key=...&api=https://other-backend.example.com
+  const API_BASE = (params.get("api") || window.location.origin).replace(/\/$/, "");
 
   const script = document.createElement("script");
   script.src = `${API_BASE}/widget/widget.js`;

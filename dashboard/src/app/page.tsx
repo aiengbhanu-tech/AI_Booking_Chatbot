@@ -490,47 +490,50 @@ export default function Dashboard() {
               <div className="billing-note">
                 <div className="info-label">Why this pays for itself</div>
                 <div className="panel-subtitle">
-                  Just 1 extra client per month can easily cover the subscription cost.
+                  Every missed call is a lost customer. Recovering just one new patient a month covers the plan.
                 </div>
                 <div className="panel-subtitle subtle-gap">
-                  Limited early pricing for the first 20 customers.
+                  Answers 24/7 on your website and your phone line — for less than a part-time receptionist.
                 </div>
               </div>
 
               <div className="pricing-grid">
                 <PlanCard
                   title="Starter"
-                  price="$49/mo"
+                  price="$79/mo"
                   features={[
-                    "Basic AI assistant",
-                    "Website embed",
-                    "Lead capture",
-                    "Up to 500 conversations/month",
+                    "AI website chatbot trained on your site",
+                    "Voice chat in the website widget",
+                    "Lead capture + appointment requests",
+                    "1,000 chats + 100 voice minutes/month",
                   ]}
                   buttonLabel={billingLoading === "starter" ? "Opening..." : "Start with Starter"}
                   onClick={() => startCheckout("starter")}
                 />
                 <PlanCard
                   title="Growth"
-                  price="$99/mo"
+                  price="$199/mo"
                   featured
                   features={[
-                    "AI assistant + booking CTA",
-                    "Lead capture + dashboard",
-                    "Priority support",
-                    "Up to 2,000 conversations/month",
+                    "Everything in Starter",
+                    "AI phone receptionist (answers when you can't)",
+                    "Automatic missed-call callbacks",
+                    "Call transcripts, summaries + SMS booking links",
+                    "3,000 chats + 400 voice minutes/month",
                   ]}
                   buttonLabel={billingLoading === "growth" ? "Opening..." : "Upgrade to Growth"}
                   onClick={() => startCheckout("growth")}
                 />
                 <PlanCard
                   title="Pro"
-                  price="$199/mo"
+                  price="$399/mo"
                   features={[
+                    "Everything in Growth",
+                    "Live transfer to your staff",
                     "Multi-location support",
-                    "Advanced analytics",
-                    "Higher limits",
-                    "Premium onboarding",
+                    "Priority support + premium onboarding",
+                    "Unlimited chats + 1,200 voice minutes/month",
+                    "Extra minutes $0.25/min",
                   ]}
                   buttonLabel={billingLoading === "pro" ? "Opening..." : "Go Pro"}
                   onClick={() => startCheckout("pro")}
