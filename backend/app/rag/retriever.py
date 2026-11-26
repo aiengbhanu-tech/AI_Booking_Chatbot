@@ -2,6 +2,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 
 from app.core.config import settings
+from app.ingest.vector_store import collection_for_dim
 
 
 def retrieve_context(
@@ -17,8 +18,11 @@ def retrieve_context(
     top_k = min(top_k or settings.TOP_K, 20)
 
     try:
+        collection = collection_for_dim(qdrant, len(query_vector))
+        if not collection:
+            return []  # nothing indexed with this embedding model yet
         hits = qdrant.search(
-            collection_name=settings.QDRANT_COLLECTION,
+            collection_name=collection,
             query_vector=query_vector,
             limit=top_k,
             query_filter=qm.Filter(

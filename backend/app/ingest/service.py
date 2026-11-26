@@ -13,6 +13,7 @@ from app.ingest.crawler import fetch_sitemap_urls, crawl_internal_pages, fetch_h
 from app.ingest.cleaner import html_to_text
 from app.ingest.chunker import chunk_text
 from app.ingest.embeddings import embed_texts
+from app.ingest.vector_store import collection_for_dim
 
 router = APIRouter()
 
@@ -36,41 +37,6 @@ class IngestResponse(BaseModel):
 # Helpers
 # -----------------------------
 
-def _get_embedding_dimension() -> int:
-    if settings.EMBEDDING_PROVIDER == "openai":
-        return 1536  # text-embedding-3-small
-
-    if settings.EMBEDDING_PROVIDER == "sentence_transformers":
-        return 384  # MiniLM
-
-    raise ValueError(f"Unknown embedding provider: {settings.EMBEDDING_PROVIDER}")
-
-
-def _ensure_collection(qdrant: QdrantClient):
-    collections = qdrant.get_collections().collections
-    exists = any(c.name == settings.QDRANT_COLLECTION for c in collections)
-
-    if not exists:
-        vector_size = _get_embedding_dimension()
-        qdrant.create_collection(
-            collection_name=settings.QDRANT_COLLECTION,
-            vectors_config=qm.VectorParams(
-                size=vector_size,
-                distance=qm.Distance.COSINE,
-            ),
-        )
-
-    # Ensure payload index for tenant_id exists
-    try:
-        qdrant.create_payload_index(
-            collection_name=settings.QDRANT_COLLECTION,
-            field_name="tenant_id",
-            field_schema=qm.PayloadSchemaType.INTEGER,
-        )
-    except Exception as e:
-        print(f"[QDRANT INDEX WARNING] {repr(e)}")
-
-
 def _run_ingestion(
     tenant: Tenant,
     website: str,
@@ -83,7 +49,6 @@ def _run_ingestion(
 
     qdrant = QdrantClient(url=settings.QDRANT_URL,
                           api_key=settings.QDRANT_API_KEY)
-    _ensure_collection(qdrant)
 
     urls = fetch_sitemap_urls(website)
     if not urls:
@@ -106,7 +71,12 @@ def _run_ingestion(
                 continue
 
             chunks = chunk_text(text)
+            if not chunks:
+                continue
             vectors = embed_texts(chunks)
+
+            # Collection matching this embedding size (created on first use)
+            collection = collection_for_dim(qdrant, len(vectors[0]), create=True)
 
             points: list[qm.PointStruct] = []
 
@@ -124,8 +94,16 @@ def _run_ingestion(
                     )
                 )
 
+            # Replace this page's old chunks so re-indexing doesn't duplicate them
+            qdrant.delete(
+                collection_name=collection,
+                points_selector=qm.FilterSelector(filter=qm.Filter(must=[
+                    qm.FieldCondition(key="tenant_id", match=qm.MatchValue(value=tenant.id)),
+                    qm.FieldCondition(key="url", match=qm.MatchValue(value=url)),
+                ])),
+            )
             qdrant.upsert(
-                collection_name=settings.QDRANT_COLLECTION,
+                collection_name=collection,
                 points=points
             )
 

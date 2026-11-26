@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import get_current_tenant
+from app.leads.models import Lead
+from app.plans import MIN_WEB_VOICE_SECONDS, plan_for, usage_snapshot
 from app.tenants.models import Tenant
 from app.voice import twilio_client as tw
 from app.voice.calls import finalize_call
@@ -21,7 +23,10 @@ from app.voice.prompts import build_instructions, session_config
 from app.voice.service import (
     cancel_open_callbacks,
     get_or_create_voice_settings,
+    callbacks_ready,
     get_voice_settings,
+    lock_and_remaining_seconds,
+    phone_ai_available,
     phone_line_ready,
     schedule_callback,
 )
@@ -38,6 +43,7 @@ router = APIRouter()
 
 class VoiceSettingsIO(BaseModel):
     web_voice_enabled: bool = False
+    web_voice_engine: str = "auto"
     phone_enabled: bool = False
     twilio_phone_number: str | None = None
     forward_to_number: str | None = None
@@ -57,6 +63,13 @@ class VoiceSettingsIO(BaseModel):
     voice: str | None = None
     greeting: str | None = Field(None, max_length=500)
     extra_instructions: str | None = Field(None, max_length=3000)
+
+    @field_validator("web_voice_engine")
+    @classmethod
+    def _engine(cls, v):
+        if v not in ("auto", "browser"):
+            raise ValueError("web_voice_engine must be 'auto' or 'browser'")
+        return v
 
     @field_validator("missed_call_mode")
     @classmethod
@@ -86,13 +99,21 @@ class VoiceSettingsIO(BaseModel):
         return (v or "").strip() or None
 
 
-def _settings_out(vs: VoiceSettings | None) -> dict:
+def _settings_out(vs: VoiceSettings | None, tenant: Tenant) -> dict:
     base = VoiceSettingsIO().model_dump() if vs is None else {
         k: getattr(vs, k) for k in VoiceSettingsIO.model_fields
     }
     webhook_base = (settings.PUBLIC_BASE_URL or "").rstrip("/")
+    plan = plan_for(tenant)
     return {
         "settings": base,
+        "plan_features": {
+            "plan": plan.key,
+            "phone_receptionist": plan.phone_receptionist,
+            "missed_call_callbacks": plan.missed_call_callbacks,
+            "sms_booking_link": plan.sms_booking_link,
+            "live_transfer": plan.live_transfer,
+        },
         "platform": {
             "openai_configured": bool(settings.OPENAI_API_KEY),
             "twilio_configured": tw.is_configured(),
@@ -108,7 +129,7 @@ def _settings_out(vs: VoiceSettings | None) -> dict:
 
 @router.get("/settings")
 def read_settings(tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)):
-    return _settings_out(get_voice_settings(db, tenant.id))
+    return _settings_out(get_voice_settings(db, tenant.id), tenant)
 
 
 @router.put("/settings")
@@ -126,6 +147,15 @@ def update_settings(payload: VoiceSettingsIO, tenant: Tenant = Depends(get_curre
     if data["twilio_phone_number"] and data["twilio_phone_number"] == data["forward_to_number"]:
         raise HTTPException(400, "Forward-to number must be different from the Twilio number")
 
+    plan = plan_for(tenant)
+    upgrade = f"is not included in the {plan.name} plan. Upgrade to Growth to use it."
+    if data["phone_enabled"] and not plan.phone_receptionist:
+        raise HTTPException(403, f"The AI phone receptionist {upgrade}")
+    if data["auto_callback_web_leads"] and not plan.missed_call_callbacks:
+        raise HTTPException(403, f"Automatic callbacks {upgrade}")
+    if data["sms_booking_link_enabled"] and not plan.sms_booking_link:
+        raise HTTPException(403, f"Texting booking links {upgrade}")
+
     vs = get_or_create_voice_settings(db, tenant.id)
     for k, v in data.items():
         setattr(vs, k, v)
@@ -135,7 +165,7 @@ def update_settings(payload: VoiceSettingsIO, tenant: Tenant = Depends(get_curre
         db.rollback()
         raise HTTPException(409, "That Twilio number is already connected to another workspace")
     db.refresh(vs)
-    return _settings_out(vs)
+    return _settings_out(vs, tenant)
 
 
 def _call_out(c: VoiceCall, full: bool = False) -> dict:
@@ -191,6 +221,7 @@ def voice_summary(tenant: Tenant = Depends(get_current_tenant), db: Session = De
         "missed_calls": count(VoiceCall.channel == "phone", VoiceCall.direction == "inbound", VoiceCall.status == "missed"),
         "callbacks_pending": cb_count(VoiceCallback.status.in_(("pending", "dialing", "in_progress"))),
         "callbacks_completed": cb_count(VoiceCallback.status == "completed"),
+        "usage": usage_snapshot(db, tenant),
     }
 
 
@@ -239,8 +270,12 @@ class ManualCallbackIn(BaseModel):
 @router.post("/callbacks")
 def create_callback(payload: ManualCallbackIn, tenant: Tenant = Depends(get_current_tenant), db: Session = Depends(get_db)):
     vs = get_voice_settings(db, tenant.id)
-    if not (phone_line_ready(vs) and vs.callback_enabled):
+    if not plan_for(tenant).missed_call_callbacks:
+        raise HTTPException(403, f"AI callbacks are not included in the {plan_for(tenant).name} plan. Upgrade to Growth to use them.")
+    if not callbacks_ready(vs):
         raise HTTPException(400, "Enable the phone line and callbacks in Voice settings first")
+    if not phone_ai_available(db, tenant.id):
+        raise HTTPException(402, "This month's AI voice minutes are used up. They reset on the 1st.")
     cb = schedule_callback(db, vs, payload.phone, "requested", name=payload.name,
                            context=payload.context, delay_seconds=0)
     if not cb:
@@ -283,8 +318,9 @@ def web_session(payload: WebSessionIn, db: Session = Depends(get_db)):
     vs = get_voice_settings(db, tenant.id)
     if not (vs and vs.web_voice_enabled):
         raise HTTPException(403, "Voice is not enabled for this assistant")
-    if not settings.OPENAI_API_KEY:
-        raise HTTPException(503, "Voice is temporarily unavailable")
+    if vs.web_voice_engine == "browser" or not settings.OPENAI_API_KEY:
+        # Widget uses the free browser voice instead
+        raise HTTPException(402, "Use browser voice")
 
     # Light abuse guard: cap concurrent-ish sessions per widget session
     recent = (
@@ -296,6 +332,23 @@ def web_session(payload: WebSessionIn, db: Session = Depends(get_db)):
     if recent and recent >= 3:
         raise HTTPException(429, "Too many open voice sessions")
 
+    # Reserve this session's length from the plan's monthly AI voice minutes
+    _, remaining = lock_and_remaining_seconds(db, tenant.id)
+    if remaining < MIN_WEB_VOICE_SECONDS:
+        db.rollback()
+        raise HTTPException(402, "Monthly AI voice minutes used up")
+    max_seconds = min(settings.VOICE_MAX_WEB_SESSION_SECONDS, remaining)
+    call = VoiceCall(tenant_id=tenant.id, channel="web", direction="inbound",
+                     session_id=payload.session_id, status="ai_active", answered_by="ai",
+                     max_seconds=max_seconds)
+    db.add(call)
+    db.commit()
+    db.refresh(call)
+
+    def release(status: str):
+        call.status, call.ended_at, call.duration_seconds = status, utcnow(), 0
+        db.commit()
+
     cfg = session_config(build_instructions(tenant, vs, "web"), tools_for("web", tenant, vs), vs, phone=False)
     try:
         r = httpx.post(
@@ -306,21 +359,24 @@ def web_session(payload: WebSessionIn, db: Session = Depends(get_db)):
         )
     except httpx.HTTPError as e:
         print("[WEB VOICE SESSION ERROR]", repr(e))
+        release("failed")
         raise HTTPException(502, "Voice provider unreachable")
     if r.status_code >= 400:
         print("[WEB VOICE SESSION REFUSED]", r.status_code, r.text[:300])
+        release("failed")
         raise HTTPException(502, "Voice provider refused the session")
 
-    call = VoiceCall(tenant_id=tenant.id, channel="web", direction="inbound",
-                     session_id=payload.session_id, status="ai_active", answered_by="ai")
-    db.add(call)
-    db.commit()
-    db.refresh(call)
+    # OpenAI returns the call id in the Location header (/v1/realtime/calls/{id});
+    # kept so the server can hang the session up if the browser never ends it.
+    location = r.headers.get("location") or ""
+    if "/realtime/calls/" in location:
+        call.provider_call_sid = location.rsplit("/", 1)[-1][:64]
+        db.commit()
     return {
         "sdp": r.text,
         "voice_call_id": call.id,
         "token": sign_token("web", call.id, tenant.id),
-        "max_seconds": settings.VOICE_MAX_WEB_SESSION_SECONDS,
+        "max_seconds": max_seconds,
         "greeting": (vs.greeting if vs.greeting else
                      f"Greet the visitor warmly as the AI assistant for {tenant.name} and ask how you can help. One short sentence."),
     }
@@ -381,7 +437,9 @@ def web_end(payload: WebEndIn, background: BackgroundTasks, db: Session = Depend
         for t in payload.transcript if isinstance(t, dict)
     ]
     events = list(call.tool_events or [])
-    duration = min(payload.duration_seconds, settings.VOICE_MAX_WEB_SESSION_SECONDS + 60)
+    started = call.started_at if call.started_at.tzinfo else call.started_at.replace(tzinfo=timezone.utc)
+    elapsed = int((utcnow() - started).total_seconds())
+    duration = max(0, min(elapsed, call.max_seconds or settings.VOICE_MAX_WEB_SESSION_SECONDS))
     # Summarising may take a few seconds; don't block the widget.
     background.add_task(finalize_call, call.id, transcript, events, duration, mirror_to_chat=True)
     return {"ok": True}
@@ -451,7 +509,21 @@ def twilio_incoming(p: dict = Depends(twilio_params), db: Session = Depends(get_
     return _xml(_ai_or_fallback(db, call, vs))
 
 
+def _no_ai_fallback(db: Session, call: VoiceCall) -> str:
+    """AI minutes used up: take a message for the team instead of an AI conversation."""
+    call.status = "missed"
+    call.outcome = "voice_minutes_exhausted"
+    db.add(Lead(tenant_id=call.tenant_id, phone=call.from_number, intent="callback",
+                notes="Missed phone call (AI voice minutes used up this month). Please call back.",
+                session_id=f"call:{call.provider_call_sid}" if call.provider_call_sid else None))
+    db.commit()
+    return tw.twiml(tw.say("Sorry we missed your call. Our team will call you back as soon as possible. Goodbye."),
+                    tw.hangup())
+
+
 def _ai_or_fallback(db: Session, call: VoiceCall, vs: VoiceSettings) -> str:
+    if not phone_ai_available(db, call.tenant_id):
+        return _no_ai_fallback(db, call)
     if vs.missed_call_mode == "callback_only" or not settings.OPENAI_API_KEY:
         call.status = "missed"
         db.commit()

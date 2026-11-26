@@ -1,4 +1,3 @@
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,7 +9,9 @@ class Settings(BaseSettings):
     ENV: str = "dev"
     API_KEY_SALT: str = "change-me-super-secret"
     APP_BASE_URL: str = "http://localhost:3000"
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:3000"]
+    # Comma-separated origins, "*" for any (needed so client websites can embed the
+    # widget; safe because auth is the X-API-Key header, not cookies), or a JSON list.
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg2://app:app@localhost:5432/app"
@@ -51,7 +52,8 @@ class Settings(BaseSettings):
     # Public HTTPS base URL of THIS backend, as Twilio sees it (e.g. https://api.example.com).
     # Used to build webhook / media-stream URLs and to validate Twilio signatures.
     PUBLIC_BASE_URL: str | None = None
-    REALTIME_MODEL: str = "gpt-realtime-2.1"
+    # Mini: ~3x cheaper than gpt-realtime-2.1, good for receptionist calls
+    REALTIME_MODEL: str = "gpt-realtime-2.1-mini"
     REALTIME_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
     REALTIME_VOICE: str = "marin"
     VOICE_TOKEN_SECRET: str | None = None  # falls back to API_KEY_SALT
@@ -65,12 +67,14 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_VALIDATE_SIGNATURES: bool = True
 
-    @field_validator("ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def parse_allowed_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    @property
+    def allowed_origins(self) -> list[str]:
+        raw = (self.ALLOWED_ORIGINS or "").strip()
+        if raw.startswith("["):
+            import json
+
+            return [str(o).strip() for o in json.loads(raw) if str(o).strip()]
+        return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
 
 
 settings = Settings()

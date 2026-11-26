@@ -1,6 +1,9 @@
 from datetime import timedelta
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
+
+from app.plans import MIN_PHONE_VOICE_SECONDS, plan_for, voice_seconds_remaining
+from app.tenants.models import Tenant
 
 from app.voice.models import VoiceCallback, VoiceSettings
 from app.voice.utils import next_allowed_call_time, normalize_phone, utcnow
@@ -23,8 +26,26 @@ def get_or_create_voice_settings(db: Session, tenant_id: int) -> VoiceSettings:
     return vs
 
 
+def _tenant_of(vs: VoiceSettings) -> Tenant | None:
+    db = object_session(vs)
+    return db.query(Tenant).filter(Tenant.id == vs.tenant_id).first() if db else None
+
+
 def phone_line_ready(vs: VoiceSettings | None) -> bool:
-    return bool(vs and vs.phone_enabled and vs.twilio_phone_number)
+    """Phone line configured AND included in the tenant's plan (Growth+)."""
+    if not (vs and vs.phone_enabled and vs.twilio_phone_number):
+        return False
+    return plan_for(_tenant_of(vs)).phone_receptionist
+
+
+def callbacks_ready(vs: VoiceSettings | None) -> bool:
+    return bool(phone_line_ready(vs) and vs.callback_enabled and plan_for(_tenant_of(vs)).missed_call_callbacks)
+
+
+def phone_ai_available(db: Session, tenant_id: int) -> bool:
+    """Enough AI voice minutes left this month for the AI to take a phone call."""
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    return bool(tenant) and voice_seconds_remaining(db, tenant) >= MIN_PHONE_VOICE_SECONDS
 
 
 def schedule_callback(
@@ -44,7 +65,7 @@ def schedule_callback(
     De-duplicates: if this number already has an open callback, that one is reused
     (and its context extended) instead of calling the customer twice.
     """
-    if not (phone_line_ready(vs) and vs.callback_enabled):
+    if not callbacks_ready(vs):
         return None
 
     number = normalize_phone(phone, vs.default_country_code)
@@ -113,3 +134,16 @@ def cancel_open_callbacks(db: Session, tenant_id: int, phone: str | None, note: 
     if rows:
         db.commit()
     return len(rows)
+
+
+def lock_and_remaining_seconds(db: Session, tenant_id: int) -> tuple[Tenant | None, int]:
+    """Remaining AI voice seconds for the month, with the tenant row locked (Postgres)
+    so two calls starting at the same moment can't both claim the last minutes.
+    The caller must insert its VoiceCall (with max_seconds) before committing."""
+    q = db.query(Tenant).filter(Tenant.id == tenant_id)
+    if db.bind.dialect.name == "postgresql":
+        q = q.with_for_update()
+    tenant = q.first()
+    if not tenant:
+        return None, 0
+    return tenant, voice_seconds_remaining(db, tenant)

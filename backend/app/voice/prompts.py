@@ -1,6 +1,7 @@
 import json
 
 from app.core.config import settings
+from app.plans import plan_for
 from app.tenants.models import Tenant
 
 BASE = """You are the friendly AI receptionist for {name}{website}. You are speaking out loud{medium}.
@@ -29,6 +30,7 @@ ACTIONS
 
 def build_instructions(tenant: Tenant, vs, channel: str, *, caller_phone: str | None = None,
                        direction: str = "inbound", callback_context: str | None = None) -> str:
+    plan = plan_for(tenant)
     website = f" ({tenant.website_url})" if tenant.website_url else ""
     if channel == "phone":
         medium = " on a phone call"
@@ -39,11 +41,11 @@ def build_instructions(tenant: Tenant, vs, channel: str, *, caller_phone: str | 
     if tenant.calendly_url:
         if channel == "web":
             booking = " An online booking link exists; after recording the request, mention they can also pick a slot from the link shown in the chat."
-        elif vs and vs.sms_booking_link_enabled:
+        elif vs and vs.sms_booking_link_enabled and plan.sms_booking_link:
             booking = " An online booking link exists; you can offer to text it with send_booking_link."
 
     transfer = ""
-    if channel == "phone" and vs and vs.forward_to_number:
+    if channel == "phone" and vs and vs.forward_to_number and plan.live_transfer:
         transfer = " If they insist on a person right now, use transfer_to_human."
 
     ending = ""

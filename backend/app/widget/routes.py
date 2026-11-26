@@ -9,6 +9,13 @@ from app.tenants.models import Tenant
 from app.rag.chat_service import run_chat, stream_chat
 from app.leads.models import Lead
 from app.voice.service import get_voice_settings, schedule_callback
+from app.plans import (
+    MIN_WEB_VOICE_SECONDS,
+    can_chat,
+    chat_limit_message,
+    voice_seconds_remaining,
+)
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -61,6 +68,29 @@ def widget_config(widget_key: str, db: Session = Depends(get_db)):
         "position": "right",
         # Voice agent inside the widget (off unless enabled in the dashboard)
         "voice_enabled": bool(vs and vs.web_voice_enabled),
+        # "realtime" = realistic AI voice (uses plan minutes), "browser" = free browser voice
+        "voice_mode": _voice_mode(db, tenant, vs),
+    }
+
+
+def _voice_mode(db: Session, tenant: Tenant, vs) -> str:
+    if not (vs and vs.web_voice_enabled):
+        return "off"
+    if (
+        vs.web_voice_engine == "auto"
+        and settings.OPENAI_API_KEY
+        and voice_seconds_remaining(db, tenant) >= MIN_WEB_VOICE_SECONDS
+    ):
+        return "realtime"
+    return "browser"
+
+
+def _limit_response(tenant: Tenant) -> dict:
+    return {
+        "answer": chat_limit_message(tenant),
+        "actions": [{"type": "show_lead_form", "intent": "inquiry",
+                     "message": f"Leave your details and the {tenant.name} team will contact you."}],
+        "sources": [],
     }
 
 
@@ -70,6 +100,9 @@ def widget_chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
     if not payload.message:
         raise HTTPException(status_code=400, detail="Message is required")
+
+    if not can_chat(db, tenant, payload.session_id):
+        return _limit_response(tenant)
 
     return run_chat(
         db=db,
@@ -87,6 +120,16 @@ def widget_chat_stream(
     db: Session = Depends(get_db),
 ):
     tenant = get_tenant_by_widget_key(widget_key, db)
+
+    if not can_chat(db, tenant, session_id):
+        limited = _limit_response(tenant)
+
+        def limit_generator():
+            yield "data: " + json.dumps({"type": "token", "content": limited["answer"]}) + "\n\n"
+            yield "data: " + json.dumps({"type": "done", **limited}) + "\n\n"
+
+        return StreamingResponse(limit_generator(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
 
     def event_generator():
         for chunk in stream_chat(

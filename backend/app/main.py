@@ -18,6 +18,7 @@ from app.widget.routes import router as widget_router
 from app.billing.routes import router as billing_router
 from app.outreach.routes import router as outreach_router
 from app.voice.routes import router as voice_router
+from app.plans import router as usage_router
 from app.voice.worker import callback_loop
 
 
@@ -57,7 +58,7 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,6 +73,7 @@ app.include_router(widget_router, prefix="/v1/widget", tags=["widget"])
 app.include_router(billing_router, prefix="/v1/billing", tags=["billing"])
 app.include_router(outreach_router, prefix="/v1/outreach", tags=["outreach"])
 app.include_router(voice_router, prefix="/v1/voice", tags=["voice"])
+app.include_router(usage_router, prefix="/v1/usage", tags=["usage"])
 # ✅ Safe static mount
 if WIDGET_DIR.exists():
     app.mount("/widget", StaticFiles(directory=str(WIDGET_DIR)), name="widget")

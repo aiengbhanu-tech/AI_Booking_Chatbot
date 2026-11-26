@@ -64,6 +64,31 @@ Voice code lives in [`backend/app/voice/`](backend/app/voice):
 - `/v1/widget/lead` behaves the same. It can also queue an AI callback for `intent=callback`, but only if *auto-callback web leads* is enabled, and any voice error is swallowed.
 - Widget voice transcripts are also written to `chat_messages` under the same session, so the existing message analytics include them.
 
+## Plans & limits
+
+Limits match the dashboard pricing cards and are **hard caps**. They are defined in [`backend/app/plans.py`](backend/app/plans.py). Clients without an active subscription get the Starter limits. Usage resets on the 1st of each month (UTC).
+
+| | Starter | Growth | Pro |
+|---|---|---|---|
+| Chats / month (one chat = one conversation) | 1,000 | 3,000 | Unlimited |
+| AI voice minutes / month (widget + phone) | 100 | 400 | 1,200 |
+| Phone receptionist, missed-call callbacks, SMS booking link, call summaries | — | ✓ | ✓ |
+| Live transfer to staff | — | — | ✓ |
+| Free browser voice in the widget | ✓ | ✓ | ✓ |
+
+What happens at each limit:
+- **Chat limit:** conversations already in progress continue. New ones get a polite message and the lead form, and leads are never blocked.
+- **AI voice minutes:**
+  - Every AI session reserves its maximum length up front, so parallel calls can't overrun the plan.
+  - The widget switches to the **free browser voice**: the browser's own speech recognition and speech, which uses no minutes, only normal chat messages.
+  - Phone calls play "we'll call you back" and create a callback lead for the team. AI callbacks pause until minutes reset.
+  - Live phone calls are asked to wrap up 30 seconds before the limit, then end.
+- **Abandoned sessions:** widget voice sessions the browser never closed are hung up by the server and counted at their reserved length.
+
+Each widget can be set to **"Free browser voice only"** so it never uses AI voice minutes. The browser voice works best in Chrome and Edge; Chrome's speech recognition is processed by Google.
+
+The default voice model is **`gpt-realtime-2.1-mini`**, about 3× cheaper than `gpt-realtime-2.1`. Set `REALTIME_MODEL` in `.env` to change it.
+
 ## Setup
 
 ```bash
