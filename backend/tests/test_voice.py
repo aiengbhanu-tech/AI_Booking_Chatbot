@@ -5,6 +5,7 @@ import pytest
 
 from app.core.db import SessionLocal
 from app.leads.models import Lead
+from app.tenants.models import Tenant
 from app.voice import twilio_client
 from app.voice import worker as worker_mod
 from app.voice.calls import derive_outcome, finalize_call
@@ -26,7 +27,16 @@ def twilio_post(client, path, params, query=None):
     return client.post(path, params=query, data=params, headers={"X-Twilio-Signature": sig})
 
 
-def enable_phone(client, tenant, **overrides):
+def set_plan(tenant, plan="pro", status="active"):
+    db = SessionLocal()
+    t = db.query(Tenant).filter(Tenant.id == tenant["id"]).one()
+    t.plan_name, t.subscription_status = plan, status
+    db.commit()
+    db.close()
+
+
+def enable_phone(client, tenant, plan="pro", **overrides):
+    set_plan(tenant, plan)
     body = {
         "web_voice_enabled": True,
         "phone_enabled": True,
@@ -351,6 +361,7 @@ def test_web_voice_session_tool_and_end(client, tenant, monkeypatch):
     class FakeResp:
         status_code = 201
         text = "v=0\r\no=answer"
+        headers = {"location": "/v1/realtime/calls/rtc_abc123"}
 
     captured = {}
 
@@ -396,7 +407,7 @@ def test_web_voice_session_tool_and_end(client, tenant, monkeypatch):
 
 def test_dashboard_manual_callback_and_cancel(client, tenant):
     h = {"X-API-Key": tenant["api_key"]}
-    assert client.post("/v1/voice/callbacks", json={"phone": CALLER}, headers=h).status_code == 400
+    assert client.post("/v1/voice/callbacks", json={"phone": CALLER}, headers=h).status_code == 403  # Starter: not in plan
     enable_phone(client, tenant)
     cb = client.post("/v1/voice/callbacks", json={"phone": "555 765 4321", "name": "Ann"}, headers=h).json()
     assert cb["phone"] == CALLER and cb["status"] == "pending"

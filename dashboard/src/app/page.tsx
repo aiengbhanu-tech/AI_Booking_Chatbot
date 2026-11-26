@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import VoicePanel from "@/components/VoicePanel";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+// Accept either env name (.env.local historically used NEXT_PUBLIC_API_BASE)
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://localhost:8000"
+).replace(/\/$/, "");
 
 type Summary = {
   tenant_id: number;
@@ -533,7 +536,6 @@ export default function Dashboard() {
                     "Multi-location support",
                     "Priority support + premium onboarding",
                     "Unlimited chats + 1,200 voice minutes/month",
-                    "Extra minutes $0.25/min",
                   ]}
                   buttonLabel={billingLoading === "pro" ? "Opening..." : "Go Pro"}
                   onClick={() => startCheckout("pro")}

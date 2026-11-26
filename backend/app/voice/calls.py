@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from app.analytics.models import ChatMessage
 from app.core.db import SessionLocal
+from app.plans import plan_for
+from app.tenants.models import Tenant
 from app.voice.models import VoiceCall, VoiceCallback
 from app.voice.prompts import summarize_transcript
 from app.voice.service import get_voice_settings, schedule_callback
@@ -86,7 +88,8 @@ def finalize_call(
                 schedule_callback(db, vs, call.from_number, "missed_call",
                                   context="Caller hung up before speaking to anyone.", source_call_id=call.id)
 
-        if caller_spoke:
+        tenant = db.query(Tenant).filter(Tenant.id == call.tenant_id).first()
+        if caller_spoke and plan_for(tenant).call_summaries:
             summary = summarize_transcript(transcript)
             if summary:
                 call.summary = summary

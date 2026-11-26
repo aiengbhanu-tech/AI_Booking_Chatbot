@@ -20,11 +20,12 @@ from app.voice import twilio_client
 from app.voice.calls import finalize_call
 from app.voice.models import VoiceCall, VoiceCallback
 from app.voice.prompts import build_instructions, greeting_instruction, session_config
-from app.voice.service import get_voice_settings
+from app.voice.service import get_voice_settings, lock_and_remaining_seconds
 from app.voice.tools import ToolContext, execute_tool, tools_for
 from app.voice.utils import verify_token
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
+WRAP_UP_SECONDS = 30
 
 
 def _load(call_id: int):
@@ -42,6 +43,9 @@ def _load(call_id: int):
             if cb:
                 cb.status = "in_progress"
                 cb_context = cb.context
+        # Reserve this call's maximum length from the plan's monthly AI minutes
+        _, remaining = lock_and_remaining_seconds(db, call.tenant_id)
+        call.max_seconds = min(settings.VOICE_MAX_PHONE_CALL_SECONDS, remaining)
         call.status = "ai_active"
         call.answered_by = "ai"
         db.commit()
@@ -158,8 +162,18 @@ class PhoneSession:
                 return None
 
     async def _watchdog(self):
-        await asyncio.sleep(settings.VOICE_MAX_PHONE_CALL_SECONDS)
-        print("[PHONE BRIDGE] max duration reached; hanging up")
+        """Never exceed the minutes reserved for this call: ask the AI to wrap up
+        30 seconds before the limit, then hang up at the limit."""
+        limit = self.call.max_seconds if self.call and self.call.max_seconds is not None             else settings.VOICE_MAX_PHONE_CALL_SECONDS
+        wrap_at = max(0, limit - WRAP_UP_SECONDS)
+        await asyncio.sleep(wrap_at)
+        if limit > WRAP_UP_SECONDS:
+            await self.oa_send({"type": "response.create", "response": {"instructions": (
+                "Time is almost up for this call. Politely tell the caller you need to wrap up, "
+                "offer to have the team call them back if they still need help (use request_callback), "
+                "then say goodbye and call end_call.")}})
+        await asyncio.sleep(limit - wrap_at)
+        print("[PHONE BRIDGE] call reached its time limit; hanging up")
         await self._do_control({"type": "hangup"})
 
     # ---------- Twilio -> OpenAI ----------

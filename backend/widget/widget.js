@@ -113,6 +113,7 @@
   close.addEventListener("click", () => {
     panel.classList.remove("open");
     if (voice) endVoice("closed");
+    endBrowserVoice();
   });
 
   function setStatus(text) {
@@ -350,7 +351,9 @@
       tenantConfig = cfg;
       titleEl.textContent = cfg.tenant_name || "Assistant";
 
-      if (cfg.voice_enabled && window.RTCPeerConnection && navigator.mediaDevices) {
+      voiceMode = cfg.voice_mode || (cfg.voice_enabled ? "realtime" : "off");
+      if (voiceMode === "realtime" && !rtcSupported) voiceMode = "browser";
+      if (cfg.voice_enabled && ((voiceMode === "realtime" && rtcSupported) || browserVoiceSupported)) {
         voiceBtn.style.display = "";
       }
 
@@ -505,7 +508,8 @@
 
   async function sendMessage(text) {
     text = text || input.value.trim();
-    if (!text) return;
+    if (!text) return "";
+    let finalAnswer = "";
 
     addMessage(text, "user");
     input.value = "";
@@ -552,11 +556,13 @@
 
           if (payload.type === "done") {
             setStatus("Online now");
+            finalAnswer = payload.answer || botEl.textContent;
             handleActions(payload.actions || [], text);
           }
 
           if (payload.type === "error") {
             botEl.textContent = payload.message || "Assistant unavailable";
+            finalAnswer = botEl.textContent;
             setStatus("Unavailable");
           }
         }
@@ -566,10 +572,12 @@
       addMessage("Assistant temporarily unavailable.", "bot");
       setStatus("Unavailable");
       console.error(e);
+      finalAnswer = "Sorry, the assistant is temporarily unavailable.";
     } finally {
       send.disabled = false;
       setTimeout(() => setStatus("Online now"), 900);
     }
+    return finalAnswer;
   }
 
   function escapeHtml(value) {
@@ -581,6 +589,137 @@
       .replaceAll("'", "&#039;");
   }
 
+
+
+  // -------------------------------------------------------------------
+  // Free browser voice: the browser's own speech recognition + speech
+  // synthesis drive the normal text chat. No AI voice minutes are used
+  // (each turn is an ordinary chat message). Used when the plan's AI voice
+  // minutes run out, or when the business picks "browser voice" mode.
+  // -------------------------------------------------------------------
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rtcSupported = !!(window.RTCPeerConnection && navigator.mediaDevices);
+  const browserVoiceSupported = !!(SpeechRec && window.speechSynthesis);
+  let voiceMode = "off";
+  let bv = null;
+  const BV_MAX_IDLE = 3; // stop after 3 silent listening rounds
+
+  if (window.speechSynthesis) {
+    window.speechSynthesis.getVoices(); // voices load asynchronously in Chrome
+  }
+
+  function bvLang() {
+    return navigator.language || "en-US";
+  }
+
+  function pickSpeechVoice(lang) {
+    const voices = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+    const base = lang.split("-")[0];
+    return (
+      voices.find((x) => x.lang === lang && /natural|google|samantha|aria|jenny/i.test(x.name)) ||
+      voices.find((x) => x.lang === lang) ||
+      voices.find((x) => (x.lang || "").startsWith(base)) ||
+      null
+    );
+  }
+
+  function speechText(text) {
+    return String(text || "")
+      .replace(/https?:\/\/\S+/g, "the link in the chat")
+      .replace(/[*_#`>\[\]()|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function startBrowserVoice() {
+    if (bv || !browserVoiceSupported) return;
+    bv = { rec: null, idle: 0, started: Date.now(), timer: null };
+    voiceBar.style.display = "flex";
+    voiceBtn.classList.add("active");
+    bv.timer = setInterval(() => {
+      if (!bv) return;
+      const sec = Math.floor((Date.now() - bv.started) / 1000);
+      voiceTimerEl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    }, 1000);
+    bvListen();
+  }
+
+  function bvListen() {
+    if (!bv) return;
+    const state = bv;
+    const rec = new SpeechRec();
+    state.rec = rec;
+    rec.lang = bvLang();
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    let heard = false;
+
+    rec.onresult = async (e) => {
+      const said = ((e.results[0] && e.results[0][0] && e.results[0][0].transcript) || "").trim();
+      if (!said || bv !== state) return;
+      heard = true;
+      state.idle = 0;
+      setVoiceState("Thinking…");
+      const answer = await sendMessage(said);
+      if (bv === state) bvSpeak(answer);
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        addMessage("Microphone access was blocked. You can keep chatting by text.", "bot", { small: true });
+        endBrowserVoice();
+      }
+    };
+    rec.onend = () => {
+      if (bv !== state || heard) return;
+      state.idle += 1;
+      if (state.idle >= BV_MAX_IDLE) {
+        addMessage("Voice paused. Tap 🎤 to talk again.", "bot", { small: true });
+        endBrowserVoice();
+        return;
+      }
+      bvListen();
+    };
+    setVoiceState("Listening… speak now");
+    try { rec.start(); } catch (_) {}
+  }
+
+  function bvSpeak(text) {
+    if (!bv) return;
+    const state = bv;
+    const clean = speechText(text);
+    if (!clean) { bvListen(); return; }
+    // Chrome cuts off long utterances, so speak sentence by sentence
+    const parts = clean.match(/[^.!?]+[.!?]*/g) || [clean];
+    const lang = bvLang();
+    const chosen = pickSpeechVoice(lang);
+    window.speechSynthesis.cancel();
+    setVoiceState("Speaking… (tap 🎤 to interrupt)", true);
+    parts.forEach((part, i) => {
+      const u = new SpeechSynthesisUtterance(part.trim());
+      u.lang = lang;
+      if (chosen) u.voice = chosen;
+      u.rate = 1.03;
+      if (i === parts.length - 1) {
+        u.onend = () => { if (bv === state) bvListen(); };
+        u.onerror = u.onend;
+      }
+      window.speechSynthesis.speak(u);
+    });
+  }
+
+  function endBrowserVoice() {
+    const state = bv;
+    if (!state) return;
+    bv = null;
+    try { state.rec && state.rec.abort(); } catch (_) {}
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+    clearInterval(state.timer);
+    voiceBar.style.display = "none";
+    voiceBar.classList.remove("speaking");
+    voiceTimerEl.textContent = "";
+    voiceBtn.classList.remove("active");
+  }
 
   // -------------------------------------------------------------------
   // Voice mode: browser <-> OpenAI Realtime over WebRTC.
@@ -645,6 +784,11 @@
         body: JSON.stringify({ widget_key: tenantKey, session_id: sessionId, sdp: offer.sdp })
       });
       const data = await res.json();
+      if (res.status === 402) {
+        const fallback = new Error("realtime unavailable");
+        fallback.useBrowserVoice = true;
+        throw fallback;
+      }
       if (!res.ok) throw new Error(data.detail || "Voice unavailable");
       v.info = data;
       if (voice !== v) { endSession(v); return; } // user cancelled while connecting
@@ -662,6 +806,12 @@
       }, 1000);
       voiceBtn.classList.add("active");
     } catch (err) {
+      if (err && err.useBrowserVoice && browserVoiceSupported) {
+        endVoice("fallback");
+        voiceMode = "browser";
+        startBrowserVoice();
+        return;
+      }
       console.error("Voice start error:", err);
       const denied = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
       addMessage(
@@ -775,9 +925,19 @@
     voiceBtn.classList.remove("active");
   }
 
-  voiceBtn.onclick = () => (voice ? endVoice("user") : startVoice());
-  voiceEndBtn.onclick = () => endVoice("user");
-  window.addEventListener("pagehide", () => endVoice("pagehide"));
+  voiceBtn.onclick = () => {
+    if (voice) return endVoice("user");
+    if (bv) {
+      // Tapping while the assistant speaks interrupts it and listens again
+      if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
+      else endBrowserVoice();
+      return;
+    }
+    if (voiceMode === "realtime" && rtcSupported) startVoice();
+    else startBrowserVoice();
+  };
+  voiceEndBtn.onclick = () => { endVoice("user"); endBrowserVoice(); };
+  window.addEventListener("pagehide", () => { endVoice("pagehide"); endBrowserVoice(); });
 
   send.onclick = () => sendMessage();
 

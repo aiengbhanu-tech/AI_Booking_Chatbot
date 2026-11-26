@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 type VoiceSettings = {
   web_voice_enabled: boolean;
+  web_voice_engine: "auto" | "browser";
   phone_enabled: boolean;
   twilio_phone_number: string | null;
   forward_to_number: string | null;
@@ -33,7 +34,26 @@ type Platform = {
   webhooks: { voice_url: string | null; status_callback_url: string | null };
 };
 
+type PlanFeatures = {
+  plan: string;
+  phone_receptionist: boolean;
+  missed_call_callbacks: boolean;
+  sms_booking_link: boolean;
+  live_transfer: boolean;
+};
+
+type Usage = {
+  plan: { key: string; name: string };
+  plan_active: boolean;
+  resets_at: string;
+  chats_used: number;
+  chats_limit: number | null;
+  voice_minutes_used: number;
+  voice_minutes_limit: number;
+};
+
 type VoiceSummary = {
+  usage: Usage;
   total_calls: number;
   web_voice_sessions: number;
   ai_handled: number;
@@ -76,6 +96,7 @@ const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sa
 export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKey: string }) {
   const [settings, setSettings] = useState<VoiceSettings | null>(null);
   const [platform, setPlatform] = useState<Platform | null>(null);
+  const [features, setFeatures] = useState<PlanFeatures | null>(null);
   const [summary, setSummary] = useState<VoiceSummary | null>(null);
   const [calls, setCalls] = useState<Call[]>([]);
   const [callbacks, setCallbacks] = useState<Callback[]>([]);
@@ -111,13 +132,20 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
       ]);
       setSettings(s.settings);
       setPlatform(s.platform);
+      setFeatures(s.plan_features);
       setSummary(sum);
       setCalls(c);
       setCallbacks(cb);
     } catch (e) {
-      setNotice({ ok: false, text: `Voice data unavailable: ${(e as Error).message}` });
+      const unreachable = e instanceof TypeError; // fetch() network failure
+      setNotice({
+        ok: false,
+        text: unreachable
+          ? `Couldn't reach the backend at ${apiBase}. Make sure it's running, then click Retry.`
+          : `Voice data unavailable: ${(e as Error).message}`,
+      });
     }
-  }, [api]);
+  }, [api, apiBase]);
 
   useEffect(() => {
     if (apiKey) void load();
@@ -135,7 +163,9 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
       const out = await api("/v1/voice/settings", { method: "PUT", body: JSON.stringify(settings) });
       setSettings(out.settings);
       setPlatform(out.platform);
+      setFeatures(out.plan_features);
       setNotice({ ok: true, text: "Voice settings saved." });
+      void load();
     } catch (e) {
       setNotice({ ok: false, text: (e as Error).message });
     } finally {
@@ -180,11 +210,19 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
     }
   }
 
+  const phoneLocked = !features?.phone_receptionist;
+  const upgradeNote = "Available on the Growth plan and above";
+
   if (!settings || !platform) {
     return (
       <section className="panel">
         <h2 className="panel-title">Voice Agent & Calls</h2>
         <p className="panel-subtitle">{notice?.text || "Loading voice settings…"}</p>
+        {notice && !notice.ok && (
+          <button className="ghost-btn" style={{ marginTop: 12 }} onClick={() => { setNotice(null); void load(); }}>
+            Retry
+          </button>
+        )}
       </section>
     );
   }
@@ -208,6 +246,27 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
         {notice && (
           <div className={`message-banner ${notice.ok ? "message-success" : "message-error"}`} style={{ marginBottom: 16 }}>
             {notice.text}
+          </div>
+        )}
+
+        {summary?.usage && (
+          <div className="voice-usage">
+            <div className="voice-usage-head">
+              <span>
+                Plan: <strong>{summary.usage.plan.name}</strong>
+                {!summary.usage.plan_active && (
+                  <span className="voice-muted"> (no active subscription, so minimum limits apply)</span>
+                )}
+              </span>
+              <span className="voice-muted">Resets {new Date(summary.usage.resets_at).toLocaleDateString()}</span>
+            </div>
+            <UsageBar label="Chats this month" used={summary.usage.chats_used} limit={summary.usage.chats_limit} />
+            <UsageBar
+              label="AI voice minutes this month"
+              used={summary.usage.voice_minutes_used}
+              limit={summary.usage.voice_minutes_limit}
+              hint="When these run out, the website switches to the free browser voice and phone calls take a message for your team."
+            />
           </div>
         )}
 
@@ -242,7 +301,17 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
           <p className="panel-subtitle">Adds a 🎤 button to the chat widget. Same knowledge, leads and booking as the text chat.</p>
           <div className="voice-form">
             <Toggle label="Enable voice in chat widget" checked={settings.web_voice_enabled} onChange={(v) => set("web_voice_enabled", v)} />
-            <Field label="Voice">
+            <Field label="Voice engine">
+              <select
+                className="key-input"
+                value={settings.web_voice_engine}
+                onChange={(e) => set("web_voice_engine", e.target.value as VoiceSettings["web_voice_engine"])}
+              >
+                <option value="auto">Realistic AI voice (uses plan minutes), then free browser voice</option>
+                <option value="browser">Free browser voice only (no minutes used)</option>
+              </select>
+            </Field>
+            <Field label="AI voice">
               <select className="key-input" value={settings.voice || ""} onChange={(e) => set("voice", e.target.value || null)}>
                 <option value="">Default</option>
                 {VOICES.map((v) => (
@@ -275,7 +344,8 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
           <h2 className="panel-title">Phone line</h2>
           <p className="panel-subtitle">Your Twilio number rings your team first; if nobody answers, the AI picks up or calls back.</p>
           <div className="voice-form">
-            <Toggle label="Enable phone line" checked={settings.phone_enabled} onChange={(v) => set("phone_enabled", v)} />
+            {phoneLocked && <div className="voice-locked">🔒 {upgradeNote}</div>}
+            <Toggle label="Enable phone line" checked={settings.phone_enabled} disabled={phoneLocked} onChange={(v) => set("phone_enabled", v)} />
             <Field label="Twilio phone number">
               <input className="key-input" placeholder="+15551234567" value={settings.twilio_phone_number || ""} onChange={(e) => set("twilio_phone_number", e.target.value)} />
             </Field>
@@ -297,8 +367,12 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
             <Toggle
               label="Text the booking link when callers ask (needs Calendly URL)"
               checked={settings.sms_booking_link_enabled}
+              disabled={!features?.sms_booking_link}
               onChange={(v) => set("sms_booking_link_enabled", v)}
             />
+            {!features?.live_transfer && (
+              <div className="voice-muted">Live transfer to your staff during AI calls is available on the Pro plan.</div>
+            )}
           </div>
         </div>
       </section>
@@ -307,10 +381,17 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
         <h2 className="panel-title">Missed-call callbacks</h2>
         <p className="panel-subtitle">When a caller hangs up before talking to anyone, the AI calls them back inside your calling hours.</p>
         <div className="voice-form">
-          <Toggle label="Call back missed callers automatically" checked={settings.callback_enabled} onChange={(v) => set("callback_enabled", v)} />
+          {!features?.missed_call_callbacks && <div className="voice-locked">🔒 {upgradeNote}</div>}
+          <Toggle
+            label="Call back missed callers automatically"
+            checked={settings.callback_enabled}
+            disabled={!features?.missed_call_callbacks}
+            onChange={(v) => set("callback_enabled", v)}
+          />
           <Toggle
             label="Also call website visitors who request a callback in the chat"
             checked={settings.auto_callback_web_leads}
+            disabled={!features?.missed_call_callbacks}
             onChange={(v) => set("auto_callback_web_leads", v)}
           />
           <div className="voice-row voice-row-4">
@@ -411,7 +492,7 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
           <input className="key-input" placeholder="Phone (+1555…)" value={manual.phone} onChange={(e) => setManual({ ...manual, phone: e.target.value })} />
           <input className="key-input" placeholder="Name (optional)" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} />
           <input className="key-input" placeholder="What it's about (optional)" value={manual.context} onChange={(e) => setManual({ ...manual, context: e.target.value })} />
-          <button className="ghost-btn" onClick={scheduleManual} disabled={!manual.phone.trim()}>
+          <button className="ghost-btn" onClick={scheduleManual} disabled={!manual.phone.trim() || !features?.missed_call_callbacks}>
             Have AI call now
           </button>
         </div>
@@ -447,6 +528,55 @@ export default function VoicePanel({ apiBase, apiKey }: { apiBase: string; apiKe
       </section>
 
       <style jsx global>{`
+        .voice-usage {
+          display: grid;
+          gap: 12px;
+          padding: 16px;
+          margin-bottom: 16px;
+          border-radius: 18px;
+          background: rgba(8, 15, 28, 0.55);
+          border: 1px solid rgba(148, 163, 184, 0.14);
+        }
+        .voice-usage-head,
+        .voice-usage-label {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+          font-size: 14px;
+        }
+        .voice-usage-row {
+          display: grid;
+          gap: 6px;
+        }
+        .voice-usage-track {
+          height: 8px;
+          border-radius: 999px;
+          background: rgba(148, 163, 184, 0.18);
+          overflow: hidden;
+        }
+        .voice-usage-fill {
+          height: 100%;
+          border-radius: 999px;
+        }
+        .voice-usage-ok {
+          background: #3b82f6;
+        }
+        .voice-usage-high {
+          background: #f59e0b;
+        }
+        .voice-usage-full {
+          background: #ef4444;
+        }
+        .voice-locked {
+          font-size: 13px;
+          font-weight: 700;
+          color: #fde68a;
+        }
+        .voice-toggle-disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
         .voice-stats {
           display: grid;
           grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -681,6 +811,27 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function UsageBar({ label, used, limit, hint }: { label: string; used: number; limit: number | null; hint?: string }) {
+  const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
+  const level = pct >= 100 ? "full" : pct >= 80 ? "high" : "ok";
+  return (
+    <div className="voice-usage-row">
+      <div className="voice-usage-label">
+        <span>{label}</span>
+        <span>
+          <strong>{used.toLocaleString()}</strong> / {limit === null ? "Unlimited" : limit.toLocaleString()}
+        </span>
+      </div>
+      {limit !== null && (
+        <div className="voice-usage-track" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+          <div className={`voice-usage-fill voice-usage-${level}`} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {hint && pct >= 80 && <div className="voice-muted">{hint}</div>}
+    </div>
+  );
+}
+
 function SetupItem({ ok, label, hint }: { ok: boolean; label: string; hint: string }) {
   return (
     <span className={`voice-setup-item ${ok ? "voice-ok" : "voice-missing"}`} title={ok ? "Configured" : hint}>
@@ -702,10 +853,20 @@ function WebhookRow({ label, url, onCopy }: { label: string; url: string; onCopy
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
-    <label className="voice-toggle">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <label className={`voice-toggle ${disabled ? "voice-toggle-disabled" : ""}`}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );

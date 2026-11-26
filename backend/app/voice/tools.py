@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.ingest.embeddings import embed_texts
 from app.leads.models import Lead
+from app.plans import plan_for
 from app.rag.retriever import retrieve_context
 from app.tenants.models import Tenant
 from app.voice import twilio_client
@@ -118,10 +119,11 @@ _END = _fn(
 
 def tools_for(channel: str, tenant: Tenant, vs) -> list[dict]:
     tools = [_SEARCH, _LEAD, _BOOK, _CALLBACK]
+    plan = plan_for(tenant)
     if channel == "phone":
-        if tenant.calendly_url and vs and vs.sms_booking_link_enabled:
+        if tenant.calendly_url and vs and vs.sms_booking_link_enabled and plan.sms_booking_link:
             tools.append(_SMS_LINK)
-        if vs and vs.forward_to_number:
+        if vs and vs.forward_to_number and plan.live_transfer:
             tools.append(_TRANSFER)
         tools.append(_END)
     return tools

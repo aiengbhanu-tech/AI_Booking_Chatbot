@@ -29,6 +29,9 @@ class VoiceSettings(Base):
 
     # Voice button inside the website chat widget
     web_voice_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # "auto" = realistic AI voice while plan minutes remain, then free browser voice
+    # "browser" = always the free browser voice (no AI voice minutes used)
+    web_voice_engine: Mapped[str] = mapped_column(String(10), default="auto", nullable=False)
 
     # Phone line (Twilio)
     phone_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -91,6 +94,8 @@ class VoiceCall(Base):
     tool_events: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Longest this AI session may run (plan minutes remaining at start); reserved while live
+    max_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     callback_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("voice_callbacks.id"), nullable=True)
 
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
